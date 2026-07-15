@@ -16,7 +16,10 @@ fails loudly (ConventionError) rather than storing a wrong sign.
 
 from __future__ import annotations
 
+import time
+
 import pandas as pd
+import requests
 
 from .. import calc
 from . import ConventionError, Source, check_schema, with_retries
@@ -24,6 +27,51 @@ from . import tickers
 
 # Eastmoney AH comparison table — required columns (schema guard).
 EM_REQUIRED = ["名称", "H股代码", "最新价-HKD", "A股代码", "最新价-RMB", "溢价"]
+
+# Delayed mirror of the same clist API, used only when the realtime host
+# is down (push2.eastmoney.com 502s in long bursts). Quotes are ~15 min
+# delayed; the switch is surfaced in source_health, never silent.
+EM_MIRROR_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
+EM_PARAMS = {
+    "np": "1", "fltt": "1", "invt": "2", "fs": "b:DLMK0101",
+    "fields": "f193,f191,f192,f12,f13,f14,f1,f2,f4,f3,f152,"
+              "f186,f190,f187,f189,f188",
+    "fid": "f3", "pn": "1", "pz": "100", "po": "1", "dect": "1",
+    "wbp2u": "|0|0|0|web",
+}
+EM_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/126.0.0.0 Safari/537.36"}
+
+
+def _fetch_em_mirror() -> pd.DataFrame:
+    """Same AH comparison table from the delayed mirror, reproducing
+    akshare's column names and scaling exactly (verified against the
+    realtime host's output)."""
+    frames, pn, total = [], 1, None
+    while total is None or (pn - 1) * 100 < total:
+        params = dict(EM_PARAMS, pn=str(pn))
+        r = requests.get(EM_MIRROR_URL, params=params, headers=EM_HEADERS,
+                         timeout=20)
+        r.raise_for_status()
+        data = r.json()["data"]
+        total = data["total"]
+        frames.append(pd.DataFrame(data["diff"]))
+        pn += 1
+        time.sleep(0.5)
+    df = pd.concat(frames, ignore_index=True)
+    out = pd.DataFrame({
+        "名称": df["f193"],
+        "H股代码": df["f12"],
+        "最新价-HKD": pd.to_numeric(df["f2"], errors="coerce") / 1000,
+        "H股-涨跌幅": pd.to_numeric(df["f3"], errors="coerce") / 100,
+        "A股代码": df["f191"],
+        "最新价-RMB": pd.to_numeric(df["f186"], errors="coerce") / 100,
+        "A股-涨跌幅": pd.to_numeric(df["f187"], errors="coerce") / 100,
+        "比价": pd.to_numeric(df["f189"], errors="coerce") / 100,
+        "溢价": pd.to_numeric(df["f188"], errors="coerce") / 100,
+    })
+    return out
 
 # Median |reported − recomputed| tolerance in pp for accepting a convention.
 # Generous because EM's own FX snapshot differs slightly from ours.
@@ -57,8 +105,15 @@ class AkshareSource(Source):
     def _fetch_table(self) -> pd.DataFrame:
         import akshare as ak  # deferred: keeps offline tests import-free
         # push2.eastmoney.com 502s in bursts; be patient (5 tries, 3s base
-        # backoff → up to ~45s) before declaring the source failed.
-        raw = with_retries(ak.stock_zh_ah_spot_em, attempts=5, base_delay=3.0)
+        # backoff → up to ~45s), then fall back to the delayed mirror —
+        # recorded via attrs and surfaced in source_health, never silent.
+        host = "push2 (realtime)"
+        try:
+            raw = with_retries(ak.stock_zh_ah_spot_em, attempts=5,
+                               base_delay=3.0)
+        except Exception:
+            raw = with_retries(_fetch_em_mirror, attempts=3, base_delay=3.0)
+            host = "push2delay (15-min delayed mirror)"
         check_schema(raw, EM_REQUIRED, "akshare stock_zh_ah_spot_em")
         df = pd.DataFrame({
             "name_zh": raw["名称"],
@@ -76,6 +131,7 @@ class AkshareSource(Source):
         # appear on two pages within a single fetch — keep the first row.
         df = df.drop_duplicates("h_ticker", keep="first").reset_index(drop=True)
         df.attrs["dropped_rows"] = before - len(df)
+        df.attrs["em_host"] = host
         return df
 
     def fetch_universe(self) -> pd.DataFrame:
@@ -124,9 +180,11 @@ class AkshareSource(Source):
         if hkd_per_cny is None:
             raise ValueError("hkd_per_cny is required to verify the premium "
                              "convention before the figure can be trusted")
-        df = self._fetch_table()
+        table = self._fetch_table()
+        df = table
         if h_tickers is not None:
             df = df[df["h_ticker"].isin(h_tickers)].reset_index(drop=True)
+        df.attrs.update(table.attrs)   # filtering can drop DataFrame attrs
         premium, convention = verify_premium_convention(df, hkd_per_cny)
         df["premium_src"] = premium
         df["fx_implied"] = ((1.0 + df["premium_src"] / 100.0)

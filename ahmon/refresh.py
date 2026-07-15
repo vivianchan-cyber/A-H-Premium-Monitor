@@ -152,6 +152,7 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
     summary["quotes"] = len(quotes)
     summary["convention"] = quotes.attrs.get("convention")
     summary["dropped_rows"] = quotes.attrs.get("dropped_rows", 0)
+    summary["em_host"] = quotes.attrs.get("em_host", "push2 (realtime)")
 
     # 3 — FX cross-check (Yahoo vs rate implied by Eastmoney's own figures)
     fx_em = float(quotes["fx_implied"].median())
@@ -159,6 +160,9 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
     summary["fx_em_implied"] = fx_em
     summary["fx_divergence_pct"] = fx_div_pct
     ak_status, ak_note = "ok", ""
+    if "delayed" in summary["em_host"]:
+        ak_status = "degraded"
+        ak_note = f" · served by {summary['em_host']} — realtime host down"
     if fx_div_pct > config.ALERT_FX_DIVERGENCE_PCT:
         alert("fx_divergence",
               f"Yahoo CNYHKD {fx:.4f} vs Eastmoney-implied {fx_em:.4f} "
