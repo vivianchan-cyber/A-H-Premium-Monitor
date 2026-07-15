@@ -146,20 +146,27 @@ DISPLAY_COLS = [
     "Updated", "Quality"]
 
 
+TEXT_COLS = {"Company", "Classification", "Sector", "H Ticker", "A Ticker",
+             "Updated", "Quality"}
+NUM_CONFIG = {c: st.column_config.NumberColumn(format="%.2f")
+              for c in DISPLAY_COLS if c not in TEXT_COLS}
+
+
 def show_table(t: pd.DataFrame):
     if t.empty:
         st.info("No companies in this group.")
         return
-    st.dataframe(
-        t[DISPLAY_COLS].style.format(precision=2, na_rep="—"),
-        use_container_width=True, height=min(560, 60 + 35 * len(t)))
+    st.dataframe(t[DISPLAY_COLS], column_config=NUM_CONFIG,
+                 use_container_width=True,
+                 height=min(560, 60 + 35 * len(t)), hide_index=True)
+    st.caption("Click any column header to sort (click again to reverse).")
 
 
 with tabs[1]:
     groups = {
         "Focus Holdings": table[table["Classification"] == config.FOCUS],
-        "All Portfolio Holdings": table[table["Classification"].isin(
-            [config.FOCUS, config.PORTFOLIO])],
+        "Other Portfolio Holdings":
+            table[table["Classification"] == config.PORTFOLIO],
         "Watchlist": table[table["Classification"] == config.WATCHLIST],
         "Other A–H Stocks": table[table["Classification"] == config.OTHER],
         "Full A–H Universe": table,
@@ -212,10 +219,18 @@ with tabs[1]:
 
 # --------------------------------------------------------- 3 Attribution
 with tabs[2]:
-    st.subheader("Premium attribution (1-day, arithmetic decomposition)")
-    st.caption("Premium move split into A-price, H-price and FX log-return "
-               "contributions that sum to the actual pp change. "
-               "No inference — pure calculation.")
+    st.subheader("Premium attribution — what caused each premium move")
+    st.markdown(
+        "The premium can only change for three reasons: the **A-share price** "
+        "moved, the **H-share price** moved, or the **CNY/HKD rate** moved. "
+        "This table splits each company's 1-day premium change into those "
+        "three parts (using log returns, scaled so the three contributions "
+        "add up exactly to the actual percentage-point move). The **Driver** "
+        "column names the dominant part — e.g. if the premium narrowed "
+        "mainly because the H share rallied, the driver is *H-share "
+        "outperformance*; when no single factor dominates it says "
+        "*Combination of factors*. Everything is arithmetic from actual "
+        "prices and FX — nothing is inferred.")
     st.dataframe(att.style.format(precision=2, na_rep="—"),
                  use_container_width=True, height=480)
     if not att.empty:
@@ -228,12 +243,25 @@ with tabs[2]:
 
 # ------------------------------------------------------------ 4 Rankings
 with tabs[3]:
+    rank_scopes = {
+        "Focus Holdings": groups["Focus Holdings"],
+        "All Portfolio Holdings (Focus + Other)":
+            table[table["Classification"].isin([config.FOCUS,
+                                                config.PORTFOLIO])],
+        "Watchlist": groups["Watchlist"],
+        "Other A–H Stocks": groups["Other A–H Stocks"],
+        "Full A–H Universe": table,
+    }
     c1, c2 = st.columns(2)
-    scope = c1.selectbox("Universe", list(groups))
+    scope = c1.selectbox("Universe", list(rank_scopes))
     key = c2.selectbox("Ranking", list(metrics.RANKINGS))
-    st.dataframe(metrics.rankings(groups[scope], key)
-                 .style.format(precision=2, na_rep="—"),
-                 use_container_width=True)
+    rk = metrics.rankings(rank_scopes[scope], key)
+    st.dataframe(
+        rk, hide_index=True, use_container_width=True,
+        column_config={c: st.column_config.NumberColumn(format="%.2f")
+                       for c in rk.columns
+                       if rk[c].dtype.kind in "fi"})
+    st.caption("Click any column header to re-sort.")
     st.markdown("##### 52-week premium extremes (full universe)")
     ext = metrics.extremes_52w(table)
     if ext.empty:
@@ -243,6 +271,13 @@ with tabs[3]:
 
 # ------------------------------------------------------------- 5 Sectors
 with tabs[4]:
+    st.markdown(
+        "Each company is assigned to one of eight sectors in the editable "
+        "classification file (`config/portfolio_sample.csv`). The numbers "
+        "below are computed from the same per-company premiums shown in the "
+        "Stock Monitor — currently **synthetic sample data**; live prices "
+        "arrive in Phase 2. *Median premium* = the middle company's A-share "
+        "premium within the sector.")
     st.dataframe(metrics.sector_stats(conn, table)
                  .style.format(precision=2, na_rep="—"),
                  use_container_width=True)
@@ -258,6 +293,10 @@ with tabs[4]:
                         line=dict(color=SECTOR_COLOR[sector], width=2))
     fig.update_layout(title="Sector median A-share premium (monthly)")
     st.plotly_chart(styled(fig, 420), use_container_width=True)
+    st.caption("Each line = the median A-share premium of that sector's "
+               "companies at each month-end. A falling line means the "
+               "sector's A shares got cheaper relative to their H shares "
+               "(premium narrowing); a rising line means widening.")
 
 # -------------------------------------------------------------- 6 Charts
 with tabs[5]:
@@ -267,10 +306,17 @@ with tabs[5]:
     g = db.daily_df(conn, cid)
     prem = pd.Series(g["premium_calc"].values, index=g["date"])
     rng = st.radio("Range", list(RANGE_KEYS), index=1, horizontal=True,
-                   key="stock_rng")
+                   key="stock_rng",
+                   help="Time window for the premium-history chart below. "
+                        "3m plots daily observations, 1y weekly, 3y/5y/max "
+                        "monthly. Daily history is always stored regardless "
+                        "of what is displayed.")
     s = calc.resample_for_range(prem, RANGE_KEYS[rng])
-    st.plotly_chart(line_chart(s, f"{pick} A-share premium (%)"),
-                    use_container_width=True)
+    fig = line_chart(s, f"{pick} A-share premium (%)")
+    fig.update_layout(title=f"{pick} — A-share premium history (%)")
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"This chart is specific to {pick}: its calculated A-share "
+               "premium over the selected range.")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -338,10 +384,28 @@ with tabs[7]:
     st.subheader("Closing summary")
     st.markdown(commentary.closing_summary(
         table, att, metrics.sector_stats(conn, table)))
+    st.divider()
+    st.subheader("Automated weekly commentary")
+    st.markdown(commentary.period_commentary(table, "1w"))
+    st.divider()
+    st.subheader("Automated monthly commentary")
+    st.markdown(commentary.period_commentary(table, "1m"))
+    st.caption("Phase 4 will run these on schedule: daily after HK close, "
+               "weekly on Friday, and a month-end report on the final "
+               "trading day.")
 
 # --------------------------------------------------------------- 9 Health
 with tabs[8]:
     st.subheader("Data-source health")
+    st.markdown(
+        "This panel tells you **whether each data feed is actually working** "
+        "so a broken feed can never masquerade as live prices. Each source "
+        "shows its status (🟢 live · 🟡 sample · 🟠 degraded/stale · "
+        "🔴 failed), when it last succeeded and its last error. Right now "
+        "every source reads **sample** because Phase 1 runs on synthetic "
+        "data — when the live feed is connected in Phase 2 these turn green, "
+        "and if a feed breaks mid-day you'll see it here (plus a stale-data "
+        "alert) instead of silently looking at old numbers.")
     health = db.source_health_df(conn)
     icon = {"ok": "🟢", "sample": "🟡", "degraded": "🟠", "stale": "🟠",
             "failed": "🔴"}

@@ -66,6 +66,60 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
     return "\n\n".join(parts) if parts else "No data available for commentary."
 
 
+def period_commentary(table: pd.DataFrame, period: str) -> str:
+    """Weekly ('1w') or monthly ('1m') commentary from stored changes.
+    Same Focus-first structure as the daily note, over a longer window."""
+    col = {"1w": "Δ1w (pp)", "1m": "Δ1m (pp)"}[period]
+    label = {"1w": "week", "1m": "month"}[period]
+    focus = table[table["Classification"] == config.FOCUS].dropna(subset=[col])
+    rest = table[table["Classification"] != config.FOCUS].dropna(subset=[col])
+    parts = []
+
+    if not focus.empty:
+        med = focus[col].median()
+        direction = ("narrowed" if med < -0.05 else
+                     "widened" if med > 0.05 else "was broadly unchanged")
+        nar = focus.sort_values(col).head(3)
+        wid = focus.sort_values(col, ascending=False).head(3)
+        amount = (f" by {abs(med):.1f} percentage points"
+                  if abs(med) > 0.05 else "")
+        parts.append(
+            f"**Focus Holdings ({label}):** The median premium among focus "
+            f"holdings {direction}{amount} over "
+            f"the past {label}. Largest narrowing: "
+            f"{_fmt_names(list(nar['Company']))} "
+            f"({', '.join(f'{v:+.1f}pp' for v in nar[col])}). "
+            f"Largest widening: {_fmt_names(list(wid['Company']))} "
+            f"({', '.join(f'{v:+.1f}pp' for v in wid[col])}).")
+
+    if not rest.empty:
+        med = rest[col].median()
+        direction = ("narrowed" if med < -0.05 else
+                     "widened" if med > 0.05 else "was broadly unchanged")
+        thr = 5 if period == "1w" else 10
+        big = rest[rest[col].abs() > thr]
+        noun = "company" if len(big) == 1 else "companies"
+        flag = (f" {len(big)} {noun} moved more than {thr}pp and "
+                f"{'was' if len(big) == 1 else 'were'} flagged for review "
+                f"({_fmt_names(list(big['Company'].head(5)))})."
+                if not big.empty else "")
+        parts.append(
+            f"**Broader A–H Market ({label}):** Across the rest of the "
+            f"universe, the median premium {direction}"
+            + (f" by {abs(med):.1f} percentage points" if abs(med) > 0.05
+               else "") + f".{flag}")
+
+    hi = table.dropna(subset=["52w percentile"])
+    ext = hi[(hi["52w percentile"] >= 98) | (hi["52w percentile"] <= 2)]
+    if not ext.empty:
+        parts.append(f"**52-week extremes:** "
+                     f"{_fmt_names(list(ext['Company'].head(6)))} are at or "
+                     f"near 52-week premium extremes.")
+    if (table["Quality"] == "sample").all():
+        parts.append("_All figures are Phase 1 synthetic sample data._")
+    return "\n\n".join(parts) if parts else "Not enough history yet."
+
+
 def closing_summary(table: pd.DataFrame, attribution: pd.DataFrame,
                     sector_stats: pd.DataFrame) -> str:
     """Short factual closing summary across the full universe."""
