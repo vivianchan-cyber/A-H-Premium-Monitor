@@ -1,0 +1,365 @@
+"""A–H Premium Monitor — Streamlit dashboard (Phase 1: sample data)."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from ahmon import alerts, calc, commentary, config, db, metrics, sample_data
+from ahmon.sources import csv_import
+
+# ---------------------------------------------------------------- palette
+# Validated dataviz palette (light mode) — see skill references/palette.md.
+C = {"blue": "#2a78d6", "green": "#008300", "magenta": "#e87ba4",
+     "yellow": "#eda100", "aqua": "#1baf7a", "orange": "#eb6834",
+     "violet": "#4a3aa7", "red": "#e34948"}
+SERIES = list(C.values())
+INK = {"primary": "#0b0b0b", "secondary": "#52514e", "muted": "#898781",
+       "grid": "#e1e0d9", "axis": "#c3c2b7", "surface": "#fcfcfb"}
+STATUS = {"good": "#0ca30c", "warning": "#fab219", "serious": "#ec835a",
+          "critical": "#d03b3b"}
+SECTOR_COLOR = {s: SERIES[i % 8] for i, s in enumerate(config.SECTORS)}
+
+
+def styled(fig: go.Figure, height=380) -> go.Figure:
+    fig.update_layout(
+        height=height, plot_bgcolor=INK["surface"], paper_bgcolor=INK["surface"],
+        font=dict(family="system-ui, sans-serif", color=INK["secondary"], size=12),
+        margin=dict(l=10, r=10, t=36, b=10),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+    )
+    fig.update_xaxes(gridcolor=INK["grid"], linecolor=INK["axis"],
+                     zerolinecolor=INK["axis"], tickfont=dict(color=INK["muted"]))
+    fig.update_yaxes(gridcolor=INK["grid"], linecolor=INK["axis"],
+                     zerolinecolor=INK["axis"], tickfont=dict(color=INK["muted"]))
+    return fig
+
+
+RANGE_KEYS = {"3m (daily)": "3m", "1y (weekly)": "1y", "3y (monthly)": "3y",
+              "5y (monthly)": "5y", "Max (monthly)": "max"}
+
+
+def line_chart(s: pd.Series, name: str, color=C["blue"], height=380):
+    fig = go.Figure(go.Scatter(x=s.index, y=s.values, name=name,
+                               mode="lines", line=dict(color=color, width=2)))
+    return styled(fig, height)
+
+
+# ------------------------------------------------------------------ data
+
+@st.cache_resource
+def get_conn():
+    if not config.DB_PATH.exists():
+        with st.spinner("Building sample database (first run)…"):
+            sample_data.build()
+    return db.connect()
+
+
+def load(version: int):
+    conn = get_conn()
+    table = metrics.monitor_table(conn)
+    att = metrics.attribution_table(conn, table)
+    return table, att
+
+
+st.set_page_config(page_title="A–H Premium Monitor", page_icon="📈",
+                   layout="wide")
+conn = get_conn()
+st.session_state.setdefault("data_version", 0)
+table, att = load(st.session_state["data_version"])
+hsahp = db.hsahp_series(conn)
+
+# ----------------------------------------------------------------- sidebar
+with st.sidebar:
+    st.title("A–H Premium Monitor")
+    if (table["Quality"] == "sample").all():
+        st.warning("**SAMPLE DATA** — Phase 1 synthetic data. "
+                   "No live feed is connected yet.", icon="⚠️")
+    st.caption(f"Timezone: Asia/Singapore · "
+               f"{datetime.now(config.TZ):%Y-%m-%d %H:%M}")
+    st.divider()
+    st.subheader("Manual CSV import")
+    up = st.file_uploader("Emergency fallback (see template in config/)",
+                          type="csv")
+    if up is not None and st.button("Import CSV"):
+        res = csv_import.import_csv(conn, up)
+        st.session_state["data_version"] += 1
+        st.success(f"Imported {res['imported']} rows; "
+                   f"skipped {len(res['skipped'])} unknown tickers.")
+        st.rerun()
+
+# -------------------------------------------------------------------- tabs
+tabs = st.tabs(["Market Overview", "Stock Monitor", "Attribution",
+                "Rankings", "Sectors", "Charts", "Alerts", "Commentary",
+                "Health"])
+
+# ------------------------------------------------------- 1 Market Overview
+with tabs[0]:
+    st.subheader("Hang Seng Stock Connect China AH Premium Index (HSAHP)")
+    if hsahp.empty:
+        st.error("No HSAHP data stored.")
+    else:
+        ch = calc.series_changes(hsahp)
+        r3, r5 = (calc.rolling_stats(hsahp, w)
+                  for w in (config.WINDOW_3Y, config.WINDOW_5Y))
+        cols = st.columns(7)
+        cols[0].metric("HSAHP level", f"{hsahp.iloc[-1]:.2f}")
+        cols[1].metric("Implied A premium", f"{hsahp.iloc[-1]-100:.1f}%",
+                       help="HSAHP − 100")
+        for c, (lbl, k) in zip(cols[2:], [("1w", "1w"), ("1m", "1m"),
+                                          ("3m", "3m"), ("YTD", "ytd"),
+                                          ("1y", "1y")]):
+            v = ch[k]
+            c.metric(f"Δ {lbl}", "—" if v is None else f"{v:+.1f} pts")
+        cols = st.columns(6)
+        cols[0].metric("3y percentile", f"{r3['percentile']:.0f}%"
+                       if r3["percentile"] is not None else "—")
+        cols[1].metric("5y percentile", f"{r5['percentile']:.0f}%"
+                       if r5["percentile"] is not None else "—")
+        cols[2].metric("3y high", f"{r3['high']:.1f}" if r3["high"] else "—")
+        cols[3].metric("3y low", f"{r3['low']:.1f}" if r3["low"] else "—")
+        cols[4].metric("5y high", f"{r5['high']:.1f}" if r5["high"] else "—")
+        cols[5].metric("5y low", f"{r5['low']:.1f}" if r5["low"] else "—")
+        rng = st.radio("Range", list(RANGE_KEYS), index=2, horizontal=True,
+                       key="hsahp_rng")
+        s = calc.resample_for_range(hsahp, RANGE_KEYS[rng])
+        st.plotly_chart(line_chart(s, "HSAHP"), use_container_width=True)
+        health = db.source_health_df(conn)
+        hs_row = health[health["source"].str.contains("HSAHP")]
+        status = hs_row.iloc[0]["status"] if not hs_row.empty else "unknown"
+        st.caption(f"Latest observation: {hsahp.index[-1]:%Y-%m-%d} · "
+                   f"source status: **{status}** · daily EOD series "
+                   f"(index publishes once per day — no intraday values).")
+
+# ------------------------------------------------------- 2 Stock Monitor
+DISPLAY_COLS = [
+    "Company", "Classification", "Sector", "H Ticker", "A Ticker",
+    "H Price (HKD)", "A Price (CNY)", "HKD/CNY", "Premium calc (%)",
+    "Premium src (%)", "Calc-src diff (pp)", "Δ1d (pp)", "Δ1w (pp)",
+    "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)", "H 1d ret (%)",
+    "A 1d ret (%)", "H div yield (%)", "A div yield (%)", "3y median (pp)",
+    "5y median (pp)", "Dist from 3y median (pp)", "52w percentile",
+    "Updated", "Quality"]
+
+
+def show_table(t: pd.DataFrame):
+    if t.empty:
+        st.info("No companies in this group.")
+        return
+    st.dataframe(
+        t[DISPLAY_COLS].style.format(precision=2, na_rep="—"),
+        use_container_width=True, height=min(560, 60 + 35 * len(t)))
+
+
+with tabs[1]:
+    groups = {
+        "Focus Holdings": table[table["Classification"] == config.FOCUS],
+        "All Portfolio Holdings": table[table["Classification"].isin(
+            [config.FOCUS, config.PORTFOLIO])],
+        "Watchlist": table[table["Classification"] == config.WATCHLIST],
+        "Other A–H Stocks": table[table["Classification"] == config.OTHER],
+        "Full A–H Universe": table,
+    }
+    sub = st.tabs(list(groups))
+    for stab, (name, t) in zip(sub, groups.items()):
+        with stab:
+            show_table(t.reset_index(drop=True))
+            if name == "Focus Holdings" and not t.empty:
+                rest = table[table["Classification"] != config.FOCUS]
+                st.markdown("##### Rest of the A–H universe (summary)")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Companies", len(rest))
+                c2.metric("Median premium",
+                          f"{rest['Premium calc (%)'].median():.1f}%")
+                c3.metric("Median Δ1d",
+                          f"{rest['Δ1d (pp)'].median():+.2f} pp")
+                c4.metric(">5pp movers today",
+                          int((rest["Δ1d (pp)"].abs() > 5).sum()))
+
+    st.divider()
+    st.markdown("##### Reclassify a company")
+    c1, c2, c3 = st.columns([2, 2, 1])
+    pick = c1.selectbox("Company", table["Company"].sort_values())
+    row = table[table["Company"] == pick].iloc[0]
+    current = row["Classification"]
+    target = c2.selectbox("Move to", [c for c in config.CLASSIFICATIONS
+                                      if c != current],
+                          help=f"Currently: {current}")
+    if c3.button("Apply", type="primary"):
+        db.set_classification(conn, int(row["company_id"]), target,
+                              source="dashboard")
+        st.session_state["data_version"] += 1
+        st.success(f"{pick}: {current} → {target} (audit-logged)")
+        st.rerun()
+    b1, b2 = st.columns(2)
+    if current != config.FOCUS and b1.button(f"⭐ Promote {pick} to Focus"):
+        db.set_classification(conn, int(row["company_id"]), config.FOCUS,
+                              source="dashboard:promote")
+        st.session_state["data_version"] += 1
+        st.rerun()
+    if current == config.FOCUS and b2.button(f"Remove {pick} from Focus "
+                                             f"(→ Other Portfolio Holding)"):
+        db.set_classification(conn, int(row["company_id"]), config.PORTFOLIO,
+                              source="dashboard:demote")
+        st.session_state["data_version"] += 1
+        st.rerun()
+    with st.expander("Classification audit log"):
+        st.dataframe(db.audit_df(conn), use_container_width=True)
+
+# --------------------------------------------------------- 3 Attribution
+with tabs[2]:
+    st.subheader("Premium attribution (1-day, arithmetic decomposition)")
+    st.caption("Premium move split into A-price, H-price and FX log-return "
+               "contributions that sum to the actual pp change. "
+               "No inference — pure calculation.")
+    st.dataframe(att.style.format(precision=2, na_rep="—"),
+                 use_container_width=True, height=480)
+    if not att.empty:
+        counts = att["Driver"].value_counts()
+        fig = go.Figure(go.Bar(
+            x=counts.values, y=counts.index, orientation="h",
+            marker=dict(color=C["blue"], cornerradius=4)))
+        fig.update_layout(title="Companies by main driver (today)")
+        st.plotly_chart(styled(fig, 300), use_container_width=True)
+
+# ------------------------------------------------------------ 4 Rankings
+with tabs[3]:
+    c1, c2 = st.columns(2)
+    scope = c1.selectbox("Universe", list(groups))
+    key = c2.selectbox("Ranking", list(metrics.RANKINGS))
+    st.dataframe(metrics.rankings(groups[scope], key)
+                 .style.format(precision=2, na_rep="—"),
+                 use_container_width=True)
+    st.markdown("##### 52-week premium extremes (full universe)")
+    ext = metrics.extremes_52w(table)
+    if ext.empty:
+        st.info("No company is at a 52-week premium extreme today.")
+    else:
+        st.dataframe(ext.style.format(precision=2), use_container_width=True)
+
+# ------------------------------------------------------------- 5 Sectors
+with tabs[4]:
+    st.dataframe(metrics.sector_stats(conn, table)
+                 .style.format(precision=2, na_rep="—"),
+                 use_container_width=True)
+    hist = metrics.sector_history(conn)
+    fig = go.Figure()
+    for i, sector in enumerate(config.SECTORS):
+        g = hist[hist["sector"] == sector]
+        if g.empty:
+            continue
+        s = pd.Series(g["median_premium"].values,
+                      index=pd.DatetimeIndex(g["date"])).resample("ME").last()
+        fig.add_scatter(x=s.index, y=s.values, name=sector, mode="lines",
+                        line=dict(color=SECTOR_COLOR[sector], width=2))
+    fig.update_layout(title="Sector median A-share premium (monthly)")
+    st.plotly_chart(styled(fig, 420), use_container_width=True)
+
+# -------------------------------------------------------------- 6 Charts
+with tabs[5]:
+    pick = st.selectbox("Company", table["Company"].sort_values(),
+                        key="chart_pick")
+    cid = int(table[table["Company"] == pick].iloc[0]["company_id"])
+    g = db.daily_df(conn, cid)
+    prem = pd.Series(g["premium_calc"].values, index=g["date"])
+    rng = st.radio("Range", list(RANGE_KEYS), index=1, horizontal=True,
+                   key="stock_rng")
+    s = calc.resample_for_range(prem, RANGE_KEYS[rng])
+    st.plotly_chart(line_chart(s, f"{pick} A-share premium (%)"),
+                    use_container_width=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("##### Current premium vs 5-year range")
+        r5 = calc.rolling_stats(prem, config.WINDOW_5Y)
+        if r5["median"] is not None:
+            fig = go.Figure()
+            fig.add_shape(type="line", x0=r5["low"], x1=r5["high"], y0=0, y1=0,
+                          line=dict(color=INK["axis"], width=6))
+            fig.add_scatter(x=[r5["median"]], y=[0], mode="markers",
+                            name="5y median",
+                            marker=dict(color=INK["muted"], size=14,
+                                        symbol="line-ns-open"))
+            fig.add_scatter(x=[prem.iloc[-1]], y=[0], mode="markers",
+                            name="Current",
+                            marker=dict(color=C["blue"], size=16))
+            fig.update_yaxes(visible=False)
+            fig.update_xaxes(title="Premium (%)")
+            st.plotly_chart(styled(fig, 200), use_container_width=True)
+    with c2:
+        st.markdown("##### A vs H rebased to 100 (1y)")
+        cutoff = g["date"].max() - pd.DateOffset(years=1)
+        gg = g[g["date"] >= cutoff]
+        a = gg["a_close"] / gg["a_close"].iloc[0] * 100
+        h = gg["h_close"] / gg["h_close"].iloc[0] * 100
+        fig = go.Figure()
+        fig.add_scatter(x=gg["date"], y=a, name="A share (CNY)", mode="lines",
+                        line=dict(color=C["blue"], width=2))
+        fig.add_scatter(x=gg["date"], y=h, name="H share (HKD)", mode="lines",
+                        line=dict(color=C["green"], width=2))
+        st.plotly_chart(styled(fig, 240), use_container_width=True)
+
+    st.markdown("##### Premium distribution across the A–H universe (today)")
+    fig = go.Figure(go.Histogram(
+        x=table["Premium calc (%)"], nbinsx=30,
+        marker=dict(color=C["blue"],
+                    line=dict(color=INK["surface"], width=2))))
+    fig.update_xaxes(title="A-share premium (%)")
+    fig.update_yaxes(title="Companies")
+    st.plotly_chart(styled(fig, 300), use_container_width=True)
+
+# -------------------------------------------------------------- 7 Alerts
+with tabs[6]:
+    if st.button("Evaluate alert rules now", type="primary"):
+        fired = alerts.evaluate(conn, table)
+        st.session_state["fired"] = fired
+    fired = st.session_state.get("fired")
+    if fired is not None:
+        if fired.empty:
+            st.success("No alerts fired.")
+        else:
+            for sev, icon in (("critical", "🟥"), ("serious", "🟧"),
+                              ("warning", "🟨"), ("info", "🟦")):
+                for _, a in fired[fired["severity"] == sev].iterrows():
+                    st.markdown(f"{icon} **{a['company'] or '—'}** · "
+                                f"`{a['rule']}` — {a['message']}")
+    with st.expander("Alert log (persisted)"):
+        st.dataframe(db.alerts_df(conn), use_container_width=True)
+
+# ---------------------------------------------------------- 8 Commentary
+with tabs[7]:
+    st.subheader("Automated daily commentary (template, calculated facts)")
+    st.markdown(commentary.daily_commentary(table, att))
+    st.divider()
+    st.subheader("Closing summary")
+    st.markdown(commentary.closing_summary(
+        table, att, metrics.sector_stats(conn, table)))
+
+# --------------------------------------------------------------- 9 Health
+with tabs[8]:
+    st.subheader("Data-source health")
+    health = db.source_health_df(conn)
+    icon = {"ok": "🟢", "sample": "🟡", "degraded": "🟠", "stale": "🟠",
+            "failed": "🔴"}
+    for _, h in health.iterrows():
+        st.markdown(f"{icon.get(h['status'], '⚪')} **{h['source']}** — "
+                    f"{h['status']} · {h['message'] or ''}  \n"
+                    f"<span style='color:{INK['muted']}'>last success: "
+                    f"{h['last_success'] or '—'} · last error: "
+                    f"{h['last_error'] or '—'}</span>",
+                    unsafe_allow_html=True)
+    st.divider()
+    st.markdown("##### Freshness by classification tier")
+    fresh = table.groupby("Classification").agg(
+        companies=("Company", "count"),
+        stale=("Quality", lambda q: int((q == "stale").sum())),
+        sample=("Quality", lambda q: int((q == "sample").sum())))
+    st.dataframe(fresh, use_container_width=True)
+    st.caption("Refresh cadence (Phase 4 scheduler): Focus 5 min during "
+               "overlapping HK/mainland hours, 10 min 15:00–16:00 HK; "
+               "Portfolio/Watchlist 15 min; Other 30 min; EOD snapshot "
+               "after HK close. Sample data is never relabelled as live.")

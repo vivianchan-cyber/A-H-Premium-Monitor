@@ -1,0 +1,12 @@
+# Phase 1 (sample data, dashboard, calc engine, tests)
+streamlit>=1.36
+pandas>=2.0
+numpy>=1.26
+plotly>=5.20
+pytest>=8.0
+
+# Phase 2+ (live sources & scheduling) — uncomment when those phases begin
+# akshare>=1.14        # A–H universe, spot prices, daily history (Eastmoney/Sina)
+# yfinance>=0.2        # independent A/H price + CNY/HKD FX cross-check
+# apscheduler>=3.10    # trading-hours refresh scheduler
+# exchange-calendars>=4.5  # HKEX / SSE trading-day & holiday awareness
