@@ -54,9 +54,15 @@ def line_chart(s: pd.Series, name: str, color=C["blue"], height=380):
 @st.cache_resource
 def get_conn():
     if not config.DB_PATH.exists():
-        with st.spinner("Building sample database (first run)…"):
-            sample_data.build()
-    return db.connect()
+        if config.DB_PATH == config.SAMPLE_DB_PATH:
+            with st.spinner("Building sample database (first run)…"):
+                sample_data.build()
+        else:
+            st.error(f"Database {config.DB_PATH} does not exist. For live "
+                     "data run `python -m ahmon.refresh` first (writes "
+                     f"{config.LIVE_DB_PATH.name}).")
+            st.stop()
+    return db.connect(config.DB_PATH)
 
 
 def load(version: int):
@@ -76,11 +82,35 @@ hsahp = db.hsahp_series(conn)
 # ----------------------------------------------------------------- sidebar
 with st.sidebar:
     st.title("A–H Premium Monitor")
-    if (table["Quality"] == "sample").all():
+    n_sample = int((table["Quality"] == "sample").sum())
+    if n_sample == len(table):
         st.warning("**SAMPLE DATA** — Phase 1 synthetic data. "
                    "No live feed is connected yet.", icon="⚠️")
+    elif n_sample:
+        st.warning(f"**MIXED DATA** — {n_sample} of {len(table)} companies "
+                   "still show sample data.", icon="⚠️")
+    else:
+        st.success("Live data — akshare/Eastmoney prices, Yahoo FX & "
+                   "verification.", icon="🟢")
     st.caption(f"Timezone: Asia/Singapore · "
-               f"{datetime.now(config.TZ):%Y-%m-%d %H:%M}")
+               f"{datetime.now(config.TZ):%Y-%m-%d %H:%M} · "
+               f"DB: `{config.DB_PATH.name}`")
+    if n_sample == 0:
+        if st.button("🔄 Refresh live data now", type="primary",
+                     use_container_width=True):
+            from ahmon import refresh as _refresh
+            with st.spinner("Fetching live quotes (akshare + Yahoo)…"):
+                try:
+                    s = _refresh.refresh_live(conn)
+                except Exception as e:      # noqa: BLE001 — shown, not hidden
+                    st.error(f"Refresh failed — see Health tab. {e}")
+                else:
+                    st.session_state["data_version"] += 1
+                    st.success(f"{s['upserted']} companies refreshed for "
+                               f"{s['obs_date']} · FX {s['fx']:.4f} · "
+                               f"{s['calc_vs_source_flags']} calc-vs-source "
+                               "flags")
+                    st.rerun()
     st.divider()
     st.subheader("Manual CSV import")
     up = st.file_uploader("Emergency fallback (see template in config/)",
@@ -182,8 +212,10 @@ with tabs[1]:
                 c1.metric("Companies", len(rest))
                 c2.metric("Median premium",
                           f"{rest['Premium calc (%)'].median():.1f}%")
+                med_d1 = rest["Δ1d (pp)"].median()
                 c3.metric("Median Δ1d",
-                          f"{rest['Δ1d (pp)'].median():+.2f} pp")
+                          "—" if pd.isna(med_d1) else f"{med_d1:+.2f} pp",
+                          help="Needs at least two days of stored history.")
                 c4.metric(">5pp movers today",
                           int((rest["Δ1d (pp)"].abs() > 5).sum()))
 
@@ -275,9 +307,10 @@ with tabs[4]:
         "Each company is assigned to one of eight sectors in the editable "
         "classification file (`config/portfolio_sample.csv`). The numbers "
         "below are computed from the same per-company premiums shown in the "
-        "Stock Monitor — currently **synthetic sample data**; live prices "
-        "arrive in Phase 2. *Median premium* = the middle company's A-share "
-        "premium within the sector.")
+        "Stock Monitor" +
+        (" — currently **synthetic sample data**" if n_sample else "") +
+        ". *Median premium* = the middle company's A-share premium within "
+        "the sector.")
     st.dataframe(metrics.sector_stats(conn, table)
                  .style.format(precision=2, na_rep="—"),
                  use_container_width=True)
@@ -401,11 +434,11 @@ with tabs[8]:
         "This panel tells you **whether each data feed is actually working** "
         "so a broken feed can never masquerade as live prices. Each source "
         "shows its status (🟢 live · 🟡 sample · 🟠 degraded/stale · "
-        "🔴 failed), when it last succeeded and its last error. Right now "
-        "every source reads **sample** because Phase 1 runs on synthetic "
-        "data — when the live feed is connected in Phase 2 these turn green, "
-        "and if a feed breaks mid-day you'll see it here (plus a stale-data "
-        "alert) instead of silently looking at old numbers.")
+        "🔴 failed), when it last succeeded and its last error. Sample data "
+        "is never relabelled as live: synthetic rows stay 🟡 in their own "
+        "database file, and if a live feed breaks mid-day you'll see it "
+        "here (plus a stale-data alert) instead of silently looking at old "
+        "numbers.")
     health = db.source_health_df(conn)
     icon = {"ok": "🟢", "sample": "🟡", "degraded": "🟠", "stale": "🟠",
             "failed": "🔴"}

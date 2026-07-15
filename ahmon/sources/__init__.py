@@ -19,6 +19,12 @@ class SchemaChangeError(RuntimeError):
     """Raised when a source's payload no longer matches the expected shape."""
 
 
+class ConventionError(RuntimeError):
+    """Raised when a source's reported premium matches neither the A-share
+    nor the H-share convention when recomputed from its own prices — the
+    figure must not be stored until a human re-verifies the source."""
+
+
 def check_schema(df: pd.DataFrame, required_columns: list[str], source: str):
     missing = [c for c in required_columns if c not in df.columns]
     if missing:

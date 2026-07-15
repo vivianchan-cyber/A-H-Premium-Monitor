@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 CONFIG_DIR = PROJECT_ROOT / "config"
-DB_PATH = DATA_DIR / "ahmon.db"
+SAMPLE_DB_PATH = DATA_DIR / "ahmon.db"        # Phase 1 synthetic data
+LIVE_DB_PATH = DATA_DIR / "ahmon_live.db"     # live feed (Phase 2+)
+# AHMON_DB selects which database the dashboard opens (defaults to the
+# sample DB so Phase 1 behaviour is unchanged). Live and sample data live
+# in separate files so synthetic history can never blend into live series.
+DB_PATH = Path(os.environ.get("AHMON_DB", SAMPLE_DB_PATH))
 
 TZ = ZoneInfo("Asia/Singapore")
 
@@ -18,6 +24,9 @@ PORTFOLIO = "Other Portfolio Holding"
 WATCHLIST = "Watchlist"
 OTHER = "Other A-H Stock"
 CLASSIFICATIONS = [FOCUS, PORTFOLIO, WATCHLIST, OTHER]
+
+# Sector for universe companies not yet classified by the owner.
+SECTOR_UNCLASSIFIED = "Unclassified"
 
 SECTORS = [
     "Financials",
@@ -36,6 +45,9 @@ ALERT_MONTHLY_PREMIUM_MOVE_PP = 10.0
 ALERT_H_PRICE_MOVE_PCT = 5.0
 ALERT_DISCREPANCY_PP = 1.0
 ALERT_ZSCORE = 2.0
+# Cross-source checks (Phase 2 live pipeline).
+ALERT_FX_DIVERGENCE_PCT = 0.5      # Yahoo FX vs FX implied by Eastmoney
+ALERT_PRICE_VERIFY_PCT = 2.0       # akshare vs Yahoo price (Yahoo ~15m delayed)
 
 # Data considered stale during market hours after this many minutes without
 # a successful refresh (per classification tier).

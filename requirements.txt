@@ -5,8 +5,17 @@ numpy>=1.26
 plotly>=5.20
 pytest>=8.0
 
-# Phase 2+ (live sources & scheduling) — uncomment when those phases begin
-# akshare>=1.14        # A–H universe, spot prices, daily history (Eastmoney/Sina)
-# yfinance>=0.2        # independent A/H price + CNY/HKD FX cross-check
+# Phase 2 (live sources) — see docs/source_notes.md §5 for install caveats:
+# akshare must be installed with --no-deps in restricted environments where
+# its `jsonpath` dependency cannot build; a stub module satisfies the import
+# (only unused macro-economics functions need the real package).
+requests>=2.31          # Yahoo v8 chart API (quotes + CNYHKD=X FX)
+akshare>=1.14           # A–H universe, spot prices, source premium (Eastmoney)
+tabulate>=0.8.6         # akshare runtime dep + markdown validation tables
+# yfinance>=0.2         # NOT used: cookie/crumb bootstrap is rate-limited and
+#                       # its TLS impersonation fails behind egress proxies;
+#                       # ahmon/sources/yahoo.py calls the chart API directly.
+
+# Phase 4+ (scheduling) — uncomment when that phase begins
 # apscheduler>=3.10    # trading-hours refresh scheduler
 # exchange-calendars>=4.5  # HKEX / SSE trading-day & holiday awareness

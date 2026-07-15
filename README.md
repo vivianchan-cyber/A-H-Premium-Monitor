@@ -4,19 +4,39 @@ Local dashboard that replaces the manual collection of A-share prices,
 H-share prices, CNY/HKD FX, A–H premiums, dividend yields and historical
 comparisons for dual-listed (A+H) companies.
 
-**Status: Phase 1** — full dashboard, calculation engine, SQLite storage and
-tests running on deterministic *sample* data. No live feed is connected yet
-(clearly labelled in the UI). See `docs/source_notes.md` for why the two
-reference pages cannot be scraped and what the live pipeline will use.
+**Status: Phase 2** — live A/H prices, CNY/HKD FX and source-reported
+premiums from akshare/Eastmoney with Yahoo Finance as the independent
+verification/FX source. Live and sample data live in **separate database
+files** and sample data is never relabelled as live. See
+`docs/source_notes.md` for source findings (including the verified
+Eastmoney premium convention) and `docs/validation_phase2.md` for the
+10-stock live validation.
 
 ## Quick start
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m ahmon.sample_data     # builds data/ahmon.db (~45 companies, 5y+ history)
+# note: in restricted environments install akshare with --no-deps
+# (its jsonpath dep may not build) — see docs/source_notes.md §3a
+
+# Live mode (Phase 2)
+python -m ahmon.refresh                      # builds/updates data/ahmon_live.db
+AHMON_DB=data/ahmon_live.db streamlit run app.py
+
+# Sample mode (Phase 1 synthetic data)
+python -m ahmon.sample_data                  # builds data/ahmon.db
 streamlit run app.py
+
+# 10-stock live validation table (premium convention cross-check)
+python -m ahmon.validate --out docs/validation_phase2.md
 ```
+
+The sidebar has a **Refresh live data now** button in live mode; each
+refresh re-verifies the premium convention, cross-checks Yahoo FX against
+the rate implied by Eastmoney's own figures, price-verifies the Focus tier
+against Yahoo, recalculates every premium independently and flags >1pp
+deviations from the source figure.
 
 Run the tests:
 
@@ -36,8 +56,13 @@ ahmon/metrics.py        monitor table, rankings, sector stats
 ahmon/alerts.py         alert rules -> dashboard + alerts_log
 ahmon/commentary.py     template commentary from calculated facts
 ahmon/sample_data.py    deterministic Phase 1 sample data generator
-ahmon/sources/          source layer: schema guard, retry/backoff,
-                        manual CSV import (emergency fallback)
+ahmon/refresh.py        live refresh pipeline (python -m ahmon.refresh)
+ahmon/validate.py       N-stock live validation table (python -m ahmon.validate)
+ahmon/sources/          source layer: schema guard, retry/backoff, ticker
+                        normalisation, akshare/Eastmoney primary source
+                        (with premium-convention guard), Yahoo chart-API
+                        verification + FX source, manual CSV import
+                        (emergency fallback)
 config/portfolio_sample.csv   editable classification seed (23 Focus names)
 config/csv_import_template.csv  manual-import template
 docs/                   data_dictionary.md, source_notes.md
@@ -70,7 +95,7 @@ be converted to the dashboard's A-share-premium convention.
 ## Phases
 
 1. ✅ Sample data: layout, calculations, database, tests
-2. akshare source connected, 10 stocks validated manually
+2. ✅ akshare source connected, 10 stocks validated manually
 3. HSAHP index data and historical series
 4. Scheduler (HK/mainland trading hours), alerts, commentary
 5. Full portfolio onboarding and design polish

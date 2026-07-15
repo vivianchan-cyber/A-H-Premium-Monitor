@@ -68,7 +68,17 @@ def monitor_table(conn) -> pd.DataFrame:
             "Updated": last["updated_at"], "Quality": quality,
             "company_id": c["id"],
         })
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    # With a single day of live history every change/percentile field is
+    # None; coerce numeric columns to float (None -> NaN) so downstream
+    # arithmetic, sorting and .abs() work instead of TypeError-ing on
+    # object dtype.
+    text_cols = {"Company", "Name (ZH)", "Classification", "Sector",
+                 "H Ticker", "A Ticker", "Updated", "Quality"}
+    for c in df.columns:
+        if c not in text_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
 
 
 # ------------------------------------------------------------------ rankings

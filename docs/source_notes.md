@@ -1,4 +1,4 @@
-# Source notes — findings from the pre-implementation inspection (2026-07-15)
+# Source notes — pre-implementation inspection (2026-07-15) + Phase 2 live findings (2026-07-15)
 
 This file documents what was learned about the two primary reference sources
 **before any code was written**, plus the fallback strategy the pipeline is
@@ -92,6 +92,87 @@ Rules enforced in code:
   (`with_retries`).
 - Independently calculate the premium and compare with the source figure;
   discrepancies > 1pp raise the `calc_vs_source` alert.
+
+## 3a. Phase 2 live findings (verified 2026-07-15 from this environment)
+
+### Connectivity
+All planned hosts are reachable: query1.finance.yahoo.com,
+qt.gtimg.cn / web.ifzq.gtimg.cn (Tencent), push2.eastmoney.com /
+push2his.eastmoney.com (Eastmoney).
+
+### akshare endpoints
+- `stock_zh_ah_name` / `stock_zh_ah_spot` (Tencent): work; 220 A+H names,
+  but **H-share quotes only** — no A price and no premium column.
+- `stock_zh_ah_spot_em` (Eastmoney "AH股比价", the endpoint the live layer
+  uses): ~201 companies with H code, A code, both prices and a premium
+  column (溢价). Quirks handled in `sources/akshare_src.py`:
+  - **502 bursts** — push2.eastmoney.com intermittently returns
+    502/timeouts; `with_retries(attempts=5, base_delay=3)` rides them out.
+  - **Pagination duplicates/gaps** — the endpoint paginates a
+    live-resorting list, so within one fetch a stock can appear on two
+    pages (deduped by H ticker) or briefly drop out (picked up on the next
+    refresh).
+- Install caveat: `pip install --no-deps akshare` in environments where
+  its `jsonpath` dependency cannot build, then provide a stub `jsonpath`
+  module (only akshare's macro-economics functions — unused here — need
+  the real one). `tabulate`, `beautifulsoup4`, `lxml`, `tqdm`,
+  `py-mini-racer`, `decorator`, `openpyxl`, `xlrd`, `html5lib` cover the
+  rest of its runtime imports.
+
+### Eastmoney premium convention — VERIFIED
+Eastmoney's 溢价 column is the **A-share premium** (positive = A above H):
+recomputing `((A_CNY × HKD_per_CNY) / H_HKD − 1) × 100` from the table's
+own prices reproduces 溢价 to ~0.1pp across the whole table. Same
+convention as this dashboard, **opposite of AASTOCKS**. This is re-checked
+arithmetically on **every fetch** (`verify_premium_convention`): if the
+column ever flips to the H-relative convention it is converted via
+`calc.a_premium_from_h_premium`; if it matches neither convention the
+fetch raises `ConventionError` instead of storing a wrong sign.
+10-stock manual validation: `docs/validation_phase2.md` (all 10 within
+1pp of our independent calculation, from two independent price sources).
+
+### Yahoo Finance
+- The **yfinance library is unusable here**: its cookie/crumb bootstrap is
+  rate-limited (HTTP 429) and its curl_cffi browser-impersonation TLS
+  handshake is reset by egress proxies. Not a host block — the plain
+  v8 chart endpoint works with a browser User-Agent.
+- `sources/yahoo.py` therefore calls
+  `query1.finance.yahoo.com/v8/finance/chart/<symbol>` directly with
+  `requests` (quotes ~15 min delayed for HK — fine for a monitor).
+  CNYHKD=X supplies HKD-per-CNY FX; the quote currency and the
+  [0.5, 2.0] band are asserted on every fetch so a flipped rate cannot
+  slip in. Requests are spaced ~0.35 s to stay under Yahoo's rate limits.
+
+### Cross-source checks now live
+- Yahoo FX vs the FX implied by Eastmoney's own premium figures
+  (median across the table): >0.5 % divergence → `fx_divergence` alert +
+  source marked degraded. Observed divergence: 0.04–0.08 %.
+- akshare vs Yahoo prices for the Focus tier: >2 % → `price_verification`
+  alert (loose because Yahoo is delayed).
+- Known behaviour: on very-high-premium names (>200 %) the fixed 1pp
+  `calc_vs_source` threshold can be crossed by FX timing alone, since the
+  difference scales with (1 + premium) × FX-divergence. Three such flags
+  fired on 2026-07-15 (Δ ≈ 1.6pp at premiums of 110–272 %). Whether the
+  threshold should become relative for such names is an owner decision —
+  left absolute for now (conservative: it over-alerts, never under-alerts).
+
+### Live vs sample storage
+Live data is written to `data/ahmon_live.db` (`python -m ahmon.refresh`);
+the Phase 1 synthetic set stays in `data/ahmon.db`. The refresh **refuses
+to write into any database containing `quality='sample'` rows**, so sample
+history can never blend into live series or be relabelled. The dashboard
+selects its database via the `AHMON_DB` environment variable.
+
+### Still not live in Phase 2
+- Dividend yields: the Eastmoney AH table has none, and Yahoo's
+  fundamentals API needs the blocked crumb bootstrap — yields display
+  as "—" for live rows (candidates: akshare per-stock endpoints, Phase 5).
+- HSAHP: Phase 3 (health row shows 'stale' with instructions meanwhile).
+- Intraday ticks (`intraday_obs`): Phase 4 scheduler territory; Phase 2
+  refresh upserts the current daily row only.
+- Stale labelling is wall-clock based (per-tier `STALE_MINUTES`), so
+  outside trading hours live rows show as `stale` — technically true but
+  noisy; the Phase 4 trading-calendar scheduler will refine it.
 
 ## 4. Refresh limitations (summary)
 - AASTOCKS: no automated access; free quotes delayed ≥15 min anyway.

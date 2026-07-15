@@ -1,0 +1,18 @@
+# Phase 2 — 10-stock live validation
+
+Run at 2026-07-15 15:01 +08 · CNY/HKD = **1.1572** (Yahoo CNYHKD=X, HKD per 1 CNY, as of 15:00) · Eastmoney AH table: 201 companies · detected premium convention: **a_premium** (positive = A above H — same as the dashboard standard, opposite of AASTOCKS).
+
+Our premium is computed independently twice — once from Eastmoney prices, once from Yahoo prices (no Eastmoney number involved) — with `((A_CNY × HKD_per_CNY) / H_HKD − 1) × 100`. `Calc−src diff` compares our EM-price computation with Eastmoney's own displayed premium; > 1pp fires the `calc_vs_source` rule. Yahoo quotes are ~15 min delayed, so the Yahoo column can differ slightly when prices are moving.
+
+| Company                 | H Ticker   | A Ticker   |   A (CNY, EM) |   H (HKD, EM) |   A (CNY, Yahoo) |   H (HKD, Yahoo) |   Our premium, EM prices (%) |   Our premium, Yahoo prices (%) |   Source premium, EM (%) |   Calc−src diff (pp) | >1pp flag   |
+|:------------------------|:-----------|:-----------|--------------:|--------------:|-----------------:|-----------------:|-----------------------------:|--------------------------------:|-------------------------:|---------------------:|:------------|
+| China Life              | 2628.HK    | 601628.SS  |         40.42 |         28.1  |            40.27 |            28.1  |                        66.46 |                           65.84 |                    66.56 |                -0.1  | ok          |
+| Bank of China           | 3988.HK    | 601988.SS  |          5.88 |          5.07 |             5.88 |             5.06 |                        34.21 |                           34.47 |                    34.29 |                -0.08 | ok          |
+| China Construction Bank | 939.HK     | 601939.SS  |         10    |          8.19 |             9.98 |             8.19 |                        41.29 |                           41.01 |                    41.39 |                -0.1  | ok          |
+| ICBC                    | 1398.HK    | 601398.SS  |          7.51 |          6.8  |             7.49 |             6.8  |                        27.8  |                           27.46 |                    27.88 |                -0.08 | ok          |
+| Ping An                 | 2318.HK    | 601318.SS  |         49.42 |         54.5  |            50.9  |            54.5  |                         4.93 |                            8.08 |                     5    |                -0.07 | ok          |
+| Shanghai Petrochemical  | 338.HK     | 600688.SS  |          2.84 |          1.09 |             2.83 |             1.09 |                       201.51 |                          200.45 |                   201.7  |                -0.19 | ok          |
+| China Oilfield Services | 2883.HK    | 601808.SS  |         11.57 |          6.77 |            11.59 |             6.77 |                        97.77 |                           98.11 |                    97.89 |                -0.12 | ok          |
+| CNOOC                   | 883.HK     | 600938.SS  |         29.79 |         23    |            29.77 |            23.02 |                        49.88 |                           49.65 |                    49.98 |                -0.1  | ok          |
+| PetroChina              | 857.HK     | 601857.SS  |         10.02 |          9.54 |            10.01 |             9.54 |                        21.54 |                           21.42 |                    21.62 |                -0.08 | ok          |
+| Sinopec Corp            | 386.HK     | 600028.SS  |          5.03 |          4.14 |             5.03 |             4.13 |                        40.6  |                           40.94 |                    40.69 |                -0.09 | ok          |
