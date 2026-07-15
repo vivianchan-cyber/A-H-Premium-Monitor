@@ -107,7 +107,11 @@ class AkshareSource(Source):
                            "a_close": pd.to_numeric(a["close"],
                                                     errors="coerce")})
         out = aa.merge(hh, on="date", how="inner").dropna()
-        return out[(out["a_close"] > 0) & (out["h_close"] > 0)] \
+        out = out[(out["a_close"] > 0) & (out["h_close"] > 0)]
+        # Tencent's year-chunked pagination repeats boundary dates in both
+        # legs; keep one close per date so row counts are truthful (the
+        # idempotent upsert would collapse them anyway).
+        return out.drop_duplicates("date", keep="last") \
             .sort_values("date").reset_index(drop=True)
 
     def fetch_quotes(self, h_tickers: list[str] | None = None,
