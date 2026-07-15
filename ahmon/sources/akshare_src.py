@@ -82,6 +82,34 @@ class AkshareSource(Source):
         """Current A–H universe: name_zh, h_ticker, a_ticker."""
         return self._fetch_table()[["name_zh", "h_ticker", "a_ticker"]]
 
+    def fetch_history(self, h_ticker: str, a_ticker: str,
+                      start_year: int) -> pd.DataFrame:
+        """Unadjusted daily closes for both legs from Tencent (the Eastmoney
+        history API returns empty replies from some networks — see
+        docs/source_notes.md). Returns date / a_close / h_close on the dates
+        where BOTH markets traded (inner join): the premium is only defined
+        when both legs have a same-day close."""
+        import akshare as ak
+        start = f"{start_year}0101"
+        end = pd.Timestamp.now(tz=None).strftime("%Y%m%d")
+        h = with_retries(lambda: ak.stock_zh_ah_daily(
+            symbol=tickers.em_from_h(h_ticker), start_year=str(start_year),
+            end_year=end[:4], adjust=""), attempts=5, base_delay=3.0)
+        check_schema(h, ["日期", "收盘"], f"stock_zh_ah_daily {h_ticker}")
+        a = with_retries(lambda: ak.stock_zh_a_hist_tx(
+            symbol=tickers.tx_from_a(a_ticker), start_date=start,
+            end_date=end, adjust=""), attempts=5, base_delay=3.0)
+        check_schema(a, ["date", "close"], f"stock_zh_a_hist_tx {a_ticker}")
+        hh = pd.DataFrame({"date": pd.to_datetime(h["日期"]),
+                           "h_close": pd.to_numeric(h["收盘"],
+                                                    errors="coerce")})
+        aa = pd.DataFrame({"date": pd.to_datetime(a["date"]),
+                           "a_close": pd.to_numeric(a["close"],
+                                                    errors="coerce")})
+        out = aa.merge(hh, on="date", how="inner").dropna()
+        return out[(out["a_close"] > 0) & (out["h_close"] > 0)] \
+            .sort_values("date").reset_index(drop=True)
+
     def fetch_quotes(self, h_tickers: list[str] | None = None,
                      hkd_per_cny: float | None = None) -> pd.DataFrame:
         """Latest A/H prices + source premium (normalised to our A-share

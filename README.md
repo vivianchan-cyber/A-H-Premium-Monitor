@@ -22,6 +22,9 @@ pip install -r requirements.txt
 
 # Live mode (Phase 2)
 python -m ahmon.refresh                      # builds/updates data/ahmon_live.db
+python -m ahmon.backfill                     # ~6y daily history (one-time,
+                                             # resumable; enables the 5y
+                                             # median/percentile/gap metrics)
 AHMON_DB=data/ahmon_live.db streamlit run app.py
 
 # Sample mode (Phase 1 synthetic data)
@@ -57,6 +60,8 @@ ahmon/alerts.py         alert rules -> dashboard + alerts_log
 ahmon/commentary.py     template commentary from calculated facts
 ahmon/sample_data.py    deterministic Phase 1 sample data generator
 ahmon/refresh.py        live refresh pipeline (python -m ahmon.refresh)
+ahmon/backfill.py       multi-year history backfill for the 5y valuation
+                        metrics (python -m ahmon.backfill)
 ahmon/validate.py       N-stock live validation table (python -m ahmon.validate)
 ahmon/sources/          source layer: schema guard, retry/backoff, ticker
                         normalisation, akshare/Eastmoney primary source

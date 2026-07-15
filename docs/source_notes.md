@@ -156,6 +156,31 @@ fetch raises `ConventionError` instead of storing a wrong sign.
   threshold should become relative for such names is an owner decision —
   left absolute for now (conservative: it over-alerts, never under-alerts).
 
+### Historical backfill (added with the 5y valuation metrics)
+- **Eastmoney's history API is unusable from this environment**: the kline
+  endpoints (`push2his.eastmoney.com/api/qt/stock/kline/get`, bare and
+  numbered subdomains) close the connection with an empty reply, while the
+  same hosts' spot endpoints work. Verified 2026-07-15 with both curl and
+  requests, with browser headers.
+- **Tencent daily klines are used instead** (hosts qt.gtimg.cn /
+  web.ifzq.gtimg.cn, both reachable): akshare `stock_zh_ah_daily` for the
+  H leg and `stock_zh_a_hist_tx` for the A leg, both with `adjust=""` —
+  the premium compares actual traded prices, so **unadjusted** closes are
+  the correct series. ~25–30 s per company (year-chunked pagination);
+  `python -m ahmon.backfill` is resumable and idempotent.
+- Premium history is computed by us for dates where **both** markets
+  traded (inner join); no source reports historical premiums, so
+  `premium_src` stays NULL on `quality='eod'` rows.
+- FX history: Yahoo CNYHKD=X daily closes (band/currency-checked),
+  forward-filled onto equity trading days. FX candle timestamps convert to
+  Asia/Singapore dates, so an individual day's rate can be off by one FX
+  session (<0.1 % effect on the premium) — acceptable for percentile/median
+  statistics, documented here for exactness.
+- Verification: sampled companies' backfilled H closes are compared with
+  Yahoo's independent daily history; median divergence > 2 % fires
+  `history_verification` and marks the backfill degraded
+  (`source_health` row: "history backfill (Tencent prices + Yahoo FX)").
+
 ### Live vs sample storage
 Live data is written to `data/ahmon_live.db` (`python -m ahmon.refresh`);
 the Phase 1 synthetic set stays in `data/ahmon.db`. The refresh **refuses

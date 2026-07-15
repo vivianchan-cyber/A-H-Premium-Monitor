@@ -67,7 +67,58 @@ class YahooSource(Source):
         time.sleep(REQUEST_GAP_S)
         return out
 
+    def _chart_history(self, symbol: str, years: int) -> pd.Series:
+        """Daily unadjusted close series for `symbol` over `years`, indexed
+        by date (Asia/Singapore calendar day of the candle timestamp)."""
+        def call():
+            r = self.session.get(CHART_URL.format(symbol=symbol),
+                                 params={"range": f"{years}y",
+                                         "interval": "1d"}, timeout=30)
+            r.raise_for_status()
+            return r.json()
+
+        payload = with_retries(call)
+        try:
+            res = payload["chart"]["result"][0]
+            ts = res["timestamp"]
+            close = res["indicators"]["quote"][0]["close"]
+            currency = res["meta"]["currency"]
+        except (KeyError, IndexError, TypeError) as e:
+            raise SchemaChangeError(
+                f"yahoo chart history {symbol}: unexpected payload ({e})"
+            ) from e
+        idx = pd.to_datetime(ts, unit="s", utc=True).tz_convert(
+            config.TZ).normalize().tz_localize(None)
+        s = pd.Series(close, index=idx, name=symbol).dropna()
+        s = s[~s.index.duplicated(keep="last")].sort_index()
+        s.attrs["currency"] = currency
+        time.sleep(REQUEST_GAP_S)
+        return s
+
     # ----------------------------------------------------------------- API
+
+    def fetch_fx_history(self, years: int = 6) -> pd.Series:
+        """Daily CNYHKD=X closes (HKD per CNY), band- and currency-checked."""
+        s = self._chart_history(FX_SYMBOL, years)
+        if s.attrs["currency"] != "HKD":
+            raise SchemaChangeError(
+                f"CNYHKD=X history quoted in {s.attrs['currency']!r}, "
+                "expected HKD — FX direction can no longer be trusted")
+        bad = s[(s < 0.5) | (s > 2.0)]
+        if len(bad):
+            raise SchemaChangeError(
+                f"CNYHKD=X history: {len(bad)} values outside the plausible "
+                f"HKD-per-CNY band [0.5, 2.0] (e.g. {bad.iloc[0]})")
+        return s
+
+    def fetch_h_history(self, h_ticker: str, years: int = 6) -> pd.Series:
+        """Daily H-share closes for cross-verifying backfilled history."""
+        s = self._chart_history(tickers.yahoo_h_symbol(h_ticker), years)
+        if s.attrs["currency"] != "HKD":
+            raise SchemaChangeError(
+                f"{h_ticker}: history quoted in {s.attrs['currency']!r}, "
+                "expected HKD")
+        return s
 
     def fetch_fx(self) -> dict:
         """HKD per 1 CNY from CNYHKD=X, with its quote timestamp."""

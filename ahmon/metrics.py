@@ -51,7 +51,9 @@ def monitor_table(conn) -> pd.DataFrame:
             "HKD/CNY": last["fx"],
             "Premium calc (%)": last["premium_calc"],
             "Premium src (%)": last["premium_src"],
-            "Calc-src diff (pp)": last["premium_calc"] - last["premium_src"],
+            "Calc-src diff (pp)":
+                None if last["premium_src"] is None
+                else last["premium_calc"] - last["premium_src"],
             "Δ1d (pp)": ch["1d"], "Δ1w (pp)": ch["1w"], "Δ1m (pp)": ch["1m"],
             "Δ3m (pp)": ch["3m"], "ΔYTD (pp)": ch["ytd"], "Δ1y (pp)": ch["1y"],
             "H 1d ret (%)": calc.pct_return(h),
@@ -62,6 +64,10 @@ def monitor_table(conn) -> pd.DataFrame:
             "Dist from 3y median (pp)":
                 None if r3["median"] is None
                 else last["premium_calc"] - r3["median"],
+            "Dist from 5y median (pp)":
+                None if r5["median"] is None
+                else last["premium_calc"] - r5["median"],
+            "5y percentile": r5["percentile"],
             "52w percentile": r52["percentile"],
             "52w high (pp)": r52["high"], "52w low (pp)": r52["low"],
             "Premium z (1y)": calc.zscore(prem),
@@ -86,6 +92,11 @@ def monitor_table(conn) -> pd.DataFrame:
 RANKINGS = {
     "Largest A-share premium": ("Premium calc (%)", False),
     "Smallest premium / H above A": ("Premium calc (%)", True),
+    "Cheapest vs 5y median (largest negative gap)":
+        ("Dist from 5y median (pp)", True),
+    "Richest vs 5y median (largest positive gap)":
+        ("Dist from 5y median (pp)", False),
+    "Lowest 5y percentile (premium near 5y floor)": ("5y percentile", True),
     "Fastest 1-day narrowing": ("Δ1d (pp)", True),
     "Fastest 1-month narrowing": ("Δ1m (pp)", True),
     "Fastest 1-month widening": ("Δ1m (pp)", False),
@@ -103,7 +114,8 @@ def rankings(table: pd.DataFrame, key: str, n: int = 10) -> pd.DataFrame:
     else:
         t = t.sort_values(col, ascending=ascending)
     cols = ["Company", "Classification", "Sector", "Premium calc (%)",
-            "Δ1d (pp)", "Δ1m (pp)", "Dist from 3y median (pp)",
+            "Δ1d (pp)", "Δ1m (pp)", "5y median (pp)",
+            "Dist from 5y median (pp)", "5y percentile",
             "52w percentile", col]
     return t[list(dict.fromkeys(cols))].head(n).reset_index(drop=True)
 

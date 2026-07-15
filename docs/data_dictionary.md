@@ -36,7 +36,7 @@ Append-only log: company, old → new classification, timestamp, source
 | premium_calc | our A-share premium (%) — the standard definition |
 | premium_src | source-reported premium **after conversion to our convention** |
 | a_div_yield / h_div_yield | trailing dividend yields (%) |
-| quality | `ok` \| `stale` \| `sample` \| `manual_import` \| `failed` |
+| quality | `live` (spot refresh) \| `eod` (history backfill) \| `ok` \| `stale` \| `sample` \| `manual_import` \| `failed` |
 | updated_at | last successful write (Asia/Singapore ISO) |
 
 ### intraday_obs (Focus Holdings only; PK company_id + ts)
@@ -56,8 +56,11 @@ A–H constituents detected on universe refresh.
 Derived in `ahmon/metrics.py`: latest prices and FX; `Premium calc (%)`;
 `Premium src (%)`; `Calc-src diff (pp)`; premium changes Δ1d/Δ1w/Δ1m/Δ3m/
 ΔYTD/Δ1y (percentage points); H/A 1-day returns (%); dividend yields;
-3y & 5y median premium and distance from 3y median; 52-week percentile,
-high and low; 1-year z-score; last update time; quality label.
+**historical valuation metrics** — 3y & 5y median premium, distance (gap)
+from the 3y and 5y medians, and the 5y percentile of today's premium;
+52-week percentile, high and low; 1-year z-score; last update time;
+quality label. The 5y metrics need ≥630 stored observations
+(`python -m ahmon.backfill` populates ~6 years).
 
 Window conventions: 1w = 5 trading days, 1m = 21, 3m = 63, 1y = 252,
 3y = 756, 5y = 1260. YTD = change since the final observation of the prior

@@ -172,7 +172,8 @@ DISPLAY_COLS = [
     "Premium src (%)", "Calc-src diff (pp)", "Δ1d (pp)", "Δ1w (pp)",
     "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)", "H 1d ret (%)",
     "A 1d ret (%)", "H div yield (%)", "A div yield (%)", "3y median (pp)",
-    "5y median (pp)", "Dist from 3y median (pp)", "52w percentile",
+    "5y median (pp)", "Dist from 5y median (pp)", "5y percentile",
+    "Dist from 3y median (pp)", "52w percentile",
     "Updated", "Quality"]
 
 

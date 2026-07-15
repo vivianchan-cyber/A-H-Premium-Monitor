@@ -43,3 +43,12 @@ def yahoo_h_symbol(h_ticker: str) -> str:
 def yahoo_a_symbol(a_ticker: str) -> str:
     """DB A tickers are already Yahoo symbols ('601939.SS')."""
     return a_ticker.strip()
+
+
+def tx_from_a(a_ticker: str) -> str:
+    """DB A ticker -> Tencent symbol.  '601939.SS' -> 'sh601939'"""
+    code, _, suffix = a_ticker.strip().partition(".")
+    prefix = {"SS": "sh", "SZ": "sz"}.get(suffix.upper())
+    if prefix is None:
+        raise ValueError(f"unrecognised A-share ticker: {a_ticker!r}")
+    return f"{prefix}{code}"
