@@ -129,13 +129,7 @@ def build(db_path=config.DB_PATH, portfolio_csv=None) -> None:
                               "premium_calc": round(pc, 3),
                               "premium_src": round(pc + r2.normal(0, 0.1), 3),
                               "a_is_close": 0})
-            conn.executemany(
-                """INSERT OR REPLACE INTO intraday_obs
-                   (company_id, ts, a_price, h_price, fx, premium_calc,
-                    premium_src, a_is_close)
-                   VALUES (:company_id,:ts,:a_price,:h_price,:fx,
-                           :premium_calc,:premium_src,:a_is_close)""", ticks)
-            conn.commit()
+            db.insert_intraday(conn, ticks)
 
     hs = _hsahp(pd.bdate_range("2020-07-01", datetime.now(config.TZ).date()))
     db.insert_hsahp(conn, [{"date": d.strftime("%Y-%m-%d"), "close": float(v),

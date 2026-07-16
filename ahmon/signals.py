@@ -108,10 +108,8 @@ def log_signals(conn, watch: pd.DataFrame, dedupe_date: str) -> int:
     from . import db
     fired = 0
     for _, r in watch.iterrows():
-        exists = conn.execute(
-            "SELECT 1 FROM alerts_log WHERE rule='buy_level' AND company=? "
-            "AND ts LIKE ?", (r["Company"], f"{dedupe_date}%")).fetchone()
-        if exists:
+        if db.alert_exists_on_day(conn, "buy_level", str(r["Company"]),
+                                  dedupe_date):
             continue
         db.log_alert(conn, "buy_level",
                      f"[{r['H Ticker']}] {r['Why flagged']} — rule-based "

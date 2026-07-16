@@ -1,0 +1,10 @@
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# never show tracebacks (which could include paths/config) to viewers
+showErrorDetails = false

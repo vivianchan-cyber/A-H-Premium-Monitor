@@ -91,23 +91,20 @@ of AASTOCKS' displayed convention (H relative to A); external figures are
 converted before storage, and a calculated-vs-source difference > 1pp fires
 an alert. Full rules in `CLAUDE.md`.
 
-## Where does the dashboard run? (there is no public website)
+## Where does the dashboard run?
 
-This is a **local application**: the dashboard exists at
-`http://localhost:8501` on whatever machine runs `streamlit run app.py`,
-and its database is a local file. Nothing is published to the internet.
-To use it day-to-day:
+Two supported modes:
 
-1. **Your own computer** (recommended): clone this repository, follow the
-   Quick start above, keep `python -m ahmon.scheduler` running during
-   market hours. Bookmark `http://localhost:8501`.
-2. **A small always-on machine** (home server / NAS / cheap VPS): same
-   commands; open the port only to your own network. The app has **no
-   authentication**, so do not expose it to the public internet as-is.
-3. **Streamlit Community Cloud** can host public apps free of charge, but
-   that makes the dashboard (and your Focus/portfolio classifications)
-   visible to anyone with the URL — not recommended without adding
-   authentication first.
+1. **Local** (default): `http://localhost:8501` on your machine, data in
+   local SQLite files — the Quick start above, unchanged.
+2. **Hosted team website** (Railway + PostgreSQL + login): the app reads
+   `DATABASE_URL` and `AHMON_USERS` from environment variables, serves
+   only approved e-mail addresses (admin / read-only viewer roles), and
+   a cron service refreshes data automatically during HK/mainland market
+   hours. **Follow `DEPLOYMENT.md`** for exact beginner-friendly steps
+   (database creation, migration of your local data via
+   `python -m ahmon.migrate`, domains, authentication tests, rollback).
+   Keep the GitHub repository private.
 
 ## Buy-level watch
 

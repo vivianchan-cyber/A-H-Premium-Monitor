@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from ahmon import (alerts, calc, commentary, config, db, metrics,
+from ahmon import (alerts, auth, calc, commentary, config, db, metrics,
                    sample_data, signals)
 from ahmon.sources import csv_import
 
@@ -54,6 +54,8 @@ def line_chart(s: pd.Series, name: str, color=C["blue"], height=380):
 
 @st.cache_resource
 def get_conn():
+    if config.DATABASE_URL:                 # hosted mode: PostgreSQL
+        return db.connect()
     if not config.DB_PATH.exists():
         if config.DB_PATH == config.SAMPLE_DB_PATH:
             with st.spinner("Building sample database (first run)…"):
@@ -79,6 +81,8 @@ def load(version: int):
 
 st.set_page_config(page_title="A–H Premium Monitor", page_icon="📈",
                    layout="wide")
+user = auth.require_login()
+IS_ADMIN = user["role"] == "admin"
 conn = get_conn()
 st.session_state.setdefault("data_version", 0)
 table, att = load(st.session_state["data_version"])
@@ -87,6 +91,14 @@ hsahp = db.hsahp_series(conn)
 # ----------------------------------------------------------------- sidebar
 with st.sidebar:
     st.title("A–H Premium Monitor")
+    if user.get("local_dev"):
+        st.caption("🔓 local development mode — no login configured")
+    else:
+        c1, c2 = st.columns([3, 1])
+        c1.caption(f"👤 {user['email']} · **{user['role']}**")
+        if c2.button("Log out"):
+            auth.logout()
+            st.rerun()
     n_sample = int((table["Quality"] == "sample").sum())
     if n_sample == len(table):
         st.warning("**SAMPLE DATA** — Phase 1 synthetic data. "
@@ -97,10 +109,11 @@ with st.sidebar:
     else:
         st.success("Live data — akshare/Eastmoney prices, Yahoo FX & "
                    "verification.", icon="🟢")
+    db_label = "PostgreSQL" if config.DATABASE_URL else config.DB_PATH.name
     st.caption(f"Timezone: Asia/Singapore · "
                f"{datetime.now(config.TZ):%Y-%m-%d %H:%M} · "
-               f"DB: `{config.DB_PATH.name}`")
-    if n_sample == 0:
+               f"DB: `{db_label}`")
+    if n_sample == 0 and IS_ADMIN:
         if st.button("🔄 Refresh live data now", type="primary",
                      use_container_width=True):
             from ahmon import refresh as _refresh
@@ -116,16 +129,17 @@ with st.sidebar:
                                f"{s['calc_vs_source_flags']} calc-vs-source "
                                "flags")
                     st.rerun()
-    st.divider()
-    st.subheader("Manual CSV import")
-    up = st.file_uploader("Emergency fallback (see template in config/)",
-                          type="csv")
-    if up is not None and st.button("Import CSV"):
-        res = csv_import.import_csv(conn, up)
-        st.session_state["data_version"] += 1
-        st.success(f"Imported {res['imported']} rows; "
-                   f"skipped {len(res['skipped'])} unknown tickers.")
-        st.rerun()
+    if IS_ADMIN:
+        st.divider()
+        st.subheader("Manual CSV import")
+        up = st.file_uploader("Emergency fallback (see template in "
+                              "config/)", type="csv")
+        if up is not None and st.button("Import CSV"):
+            res = csv_import.import_csv(conn, up)
+            st.session_state["data_version"] += 1
+            st.success(f"Imported {res['imported']} rows; "
+                       f"skipped {len(res['skipped'])} unknown tickers.")
+            st.rerun()
 
 # -------------------------------------------------------------------- tabs
 tabs = st.tabs(["Market Overview", "Stock Monitor", "Attribution",
@@ -258,32 +272,39 @@ with tabs[1]:
                           int((rest["Δ1d (pp)"].abs() > 5).sum()))
 
     st.divider()
-    st.markdown("##### Reclassify a company")
-    c1, c2, c3 = st.columns([2, 2, 1])
-    pick = c1.selectbox("Company", table["Company"].sort_values())
-    row = table[table["Company"] == pick].iloc[0]
-    current = row["Classification"]
-    target = c2.selectbox("Move to", [c for c in config.CLASSIFICATIONS
-                                      if c != current],
-                          help=f"Currently: {current}")
-    if c3.button("Apply", type="primary"):
-        db.set_classification(conn, int(row["company_id"]), target,
-                              source="dashboard")
-        st.session_state["data_version"] += 1
-        st.success(f"{pick}: {current} → {target} (audit-logged)")
-        st.rerun()
-    b1, b2 = st.columns(2)
-    if current != config.FOCUS and b1.button(f"⭐ Promote {pick} to Focus"):
-        db.set_classification(conn, int(row["company_id"]), config.FOCUS,
-                              source="dashboard:promote")
-        st.session_state["data_version"] += 1
-        st.rerun()
-    if current == config.FOCUS and b2.button(f"Remove {pick} from Focus "
-                                             f"(→ Other Portfolio Holding)"):
-        db.set_classification(conn, int(row["company_id"]), config.PORTFOLIO,
-                              source="dashboard:demote")
-        st.session_state["data_version"] += 1
-        st.rerun()
+    if IS_ADMIN:
+        st.markdown("##### Reclassify a company")
+        c1, c2, c3 = st.columns([2, 2, 1])
+        pick = c1.selectbox("Company", table["Company"].sort_values())
+        row = table[table["Company"] == pick].iloc[0]
+        current = row["Classification"]
+        target = c2.selectbox("Move to", [c for c in config.CLASSIFICATIONS
+                                          if c != current],
+                              help=f"Currently: {current}")
+        if c3.button("Apply", type="primary"):
+            db.set_classification(conn, int(row["company_id"]), target,
+                                  source=f"dashboard:{user['email']}")
+            st.session_state["data_version"] += 1
+            st.success(f"{pick}: {current} → {target} (audit-logged)")
+            st.rerun()
+        b1, b2 = st.columns(2)
+        if current != config.FOCUS and \
+                b1.button(f"⭐ Promote {pick} to Focus"):
+            db.set_classification(conn, int(row["company_id"]),
+                                  config.FOCUS,
+                                  source=f"dashboard:{user['email']}")
+            st.session_state["data_version"] += 1
+            st.rerun()
+        if current == config.FOCUS and \
+                b2.button(f"Remove {pick} from Focus "
+                          f"(→ Other Portfolio Holding)"):
+            db.set_classification(conn, int(row["company_id"]),
+                                  config.PORTFOLIO,
+                                  source=f"dashboard:{user['email']}")
+            st.session_state["data_version"] += 1
+            st.rerun()
+    else:
+        st.caption("Classification changes require an admin account.")
     with st.expander("Classification audit log"):
         st.dataframe(db.audit_df(conn), use_container_width=True)
 
@@ -512,6 +533,23 @@ with tabs[8]:
                     f"{h['last_success'] or '—'} · last error: "
                     f"{h['last_error'] or '—'}</span>",
                     unsafe_allow_html=True)
+    if IS_ADMIN:
+        st.divider()
+        st.markdown("##### Admin: history backfill top-up")
+        st.caption("Fetches ~6y of daily history for up to 10 companies "
+                   "that don't have it yet (resumable — click again to "
+                   "continue). The first full backfill is faster as a "
+                   "one-off job: `python -m ahmon.backfill` "
+                   "(see DEPLOYMENT.md).")
+        if st.button("Backfill 10 companies now"):
+            from ahmon.backfill import backfill as _backfill
+            with st.spinner("Fetching history (≈30 s per company)…"):
+                res = _backfill(conn, limit=10, verify_n=0,
+                                log=lambda *_: None)
+            st.session_state["data_version"] += 1
+            st.success(f"{res['done']} backfilled, "
+                       f"{res['skipped_companies']} already done, "
+                       f"{res['failed']} failed.")
     st.divider()
     st.markdown("##### Freshness by classification tier")
     fresh = table.groupby("Classification").agg(

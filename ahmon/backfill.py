@@ -120,23 +120,26 @@ def backfill(conn, years: int = 6, tiers: list[str] | None = None,
     if tiers:
         wanted = [TIER_KEYS[t] for t in tiers]
         comps = comps[comps["classification"].isin(wanted)]
+    skipped_companies = 0
+    if not force:
+        # drop already-backfilled companies BEFORE applying the limit, so
+        # a small repeated --limit (e.g. the dashboard top-up button)
+        # always makes progress instead of re-checking the same names
+        need = comps["id"].map(
+            lambda cid: db.history_row_count(conn, int(cid), today)
+            < MIN_DONE_ROWS)
+        skipped_companies = int((~need).sum())
+        comps = comps[need]
     if limit:
         comps = comps.head(limit)
 
-    done = failed = skipped_companies = 0
+    done = failed = 0
     total_rows = 0
     failures: list[str] = []
     verified: list[tuple[str, float]] = []
     now = db.now_iso()
 
     for _, c in comps.iterrows():
-        if not force:
-            n = conn.execute(
-                "SELECT COUNT(*) FROM daily_obs WHERE company_id=? AND date<?",
-                (int(c["id"]), today)).fetchone()[0]
-            if n >= MIN_DONE_ROWS:
-                skipped_companies += 1
-                continue
         try:
             hist = ak_source.fetch_history(c["h_ticker"], c["a_ticker"],
                                            start_year)

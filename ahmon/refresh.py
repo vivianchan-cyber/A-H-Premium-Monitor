@@ -87,24 +87,19 @@ def sync_universe(conn, quotes: pd.DataFrame) -> dict:
         existing.add(r["h_ticker"])
         db.set_classification(conn, cid, config.OTHER,
                               source="universe_sync:akshare")
-        conn.execute(
-            "INSERT INTO constituent_log (ts, action, h_ticker, detail) "
-            "VALUES (?,?,?,?)",
-            (db.now_iso(), "added", r["h_ticker"],
-             f"new A–H pair from akshare universe ({r['name_zh']})"))
+        db.log_constituent(conn, "added", r["h_ticker"],
+                           f"new A–H pair from akshare universe "
+                           f"({r['name_zh']})")
         added.append(r["h_ticker"])
     # Companies with live history that vanished from the feed are only
     # reported, never deleted; their rows go stale visibly.
     feed = set(quotes["h_ticker"])
     missing = sorted(set(comps["h_ticker"]) - feed)
-    conn.commit()
     return {"added": added, "missing_from_feed": missing}
 
 
 def _guard_no_sample(conn):
-    n = conn.execute(
-        "SELECT COUNT(*) AS n FROM daily_obs WHERE quality='sample'"
-    ).fetchone()["n"]
+    n = db.has_sample_rows(conn)
     if n:
         raise RuntimeError(
             f"refusing to write live data into a database holding {n} "
@@ -123,9 +118,7 @@ def refresh_hsahp(conn, hsahp_source=None) -> dict:
         hsahp_source = HsahpSource()
     from .sources.hsahp import SOURCE_LABEL
 
-    last = conn.execute(
-        "SELECT MAX(date) FROM hsahp_daily WHERE source=?",
-        (SOURCE_LABEL,)).fetchone()[0]
+    last = db.last_hsahp_date(conn, SOURCE_LABEL)
     beg = "0" if last is None else \
         pd.Timestamp(last).strftime("%Y%m%d")     # re-fetch last day too
     series = hsahp_source.fetch_history(beg=beg)
@@ -167,13 +160,7 @@ def write_intraday_ticks(conn, quotes, comps, fx: float, now_iso: str,
             "premium_src": float(q["premium_src"]),
             "a_is_close": int(a_is_close),
         })
-    conn.executemany(
-        """INSERT OR REPLACE INTO intraday_obs
-           (company_id, ts, a_price, h_price, fx, premium_calc,
-            premium_src, a_is_close)
-           VALUES (:company_id,:ts,:a_price,:h_price,:fx,:premium_calc,
-                   :premium_src,:a_is_close)""", ticks)
-    conn.commit()
+    db.insert_intraday(conn, ticks)
     return len(ticks)
 
 

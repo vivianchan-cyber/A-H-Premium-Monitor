@@ -16,6 +16,11 @@ LIVE_DB_PATH = DATA_DIR / "ahmon_live.db"     # live feed (Phase 2+)
 # in separate files so synthetic history can never blend into live series.
 DB_PATH = Path(os.environ.get("AHMON_DB", SAMPLE_DB_PATH))
 
+# Hosted deployment (Railway): when DATABASE_URL is set the storage layer
+# uses PostgreSQL instead of the SQLite files above. Never hard-code the
+# URL — it carries credentials and must live in environment variables.
+DATABASE_URL = os.environ.get("DATABASE_URL") or None
+
 TZ = ZoneInfo("Asia/Singapore")
 
 # Classification labels (stored verbatim in the DB — do not rename casually).

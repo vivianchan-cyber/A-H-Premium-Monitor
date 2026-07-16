@@ -19,3 +19,7 @@ tabulate>=0.8.6         # akshare runtime dep + markdown validation tables
 # Phase 4 (scheduler, market-hours awareness)
 apscheduler>=3.10        # trading-hours refresh scheduler
 exchange-calendars>=4.5  # HKEX / SSE trading-day & holiday awareness
+
+# Hosted deployment (Railway + PostgreSQL); SQLite needs no extra deps
+sqlalchemy>=2.0          # storage layer, both backends, pooled connections
+psycopg2-binary>=2.9     # PostgreSQL driver

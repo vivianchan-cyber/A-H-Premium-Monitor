@@ -19,9 +19,8 @@ def evaluate(conn, table: pd.DataFrame,
     today = db.now_iso()[:10]
 
     def fire(rule, company, message, severity="warning"):
-        if dedupe_daily and conn.execute(
-                "SELECT 1 FROM alerts_log WHERE rule=? AND company IS ? "
-                "AND ts LIKE ?", (rule, company, f"{today}%")).fetchone():
+        if dedupe_daily and db.alert_exists_on_day(conn, rule, company,
+                                                   today):
             return
         fired.append({"rule": rule, "company": company, "severity": severity,
                       "message": message})
