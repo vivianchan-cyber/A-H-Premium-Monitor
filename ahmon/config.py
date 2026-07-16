@@ -49,6 +49,18 @@ ALERT_ZSCORE = 2.0
 ALERT_FX_DIVERGENCE_PCT = 0.5      # Yahoo FX vs FX implied by Eastmoney
 ALERT_PRICE_VERIFY_PCT = 2.0       # akshare vs Yahoo price (Yahoo ~15m delayed)
 
+# Buy-level screen thresholds (ahmon/signals.py). Rule-based screening,
+# not investment advice — tune these to taste; every triggered signal
+# lists which thresholds it met and by how much.
+SIGNAL_MIN_H_UPSIDE_PCT = 15.0     # H upside if premium reverts to 5y median
+SIGNAL_MIN_5Y_PERCENTILE = 80.0    # premium unusually wide vs own history
+SIGNAL_MIN_H_DIV_YIELD = 4.0       # paid to wait (H leg, %)
+SIGNAL_MAX_H_PE = 12.0             # H cheap in absolute terms too (TTM)
+SIGNAL_MIN_H_MKTCAP_HKD = 10e9     # liquidity floor (10bn HKD)
+# A signal needs the two premium conditions plus at least this many of the
+# three quality conditions (yield / P-E / size).
+SIGNAL_MIN_QUALITY_HITS = 2
+
 # Data considered stale during market hours after this many minutes without
 # a successful refresh (per classification tier).
 STALE_MINUTES = {FOCUS: 15, PORTFOLIO: 30, WATCHLIST: 30, OTHER: 60}

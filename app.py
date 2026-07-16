@@ -8,7 +8,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from ahmon import alerts, calc, commentary, config, db, metrics, sample_data
+from ahmon import (alerts, calc, commentary, config, db, metrics,
+                   sample_data, signals)
 from ahmon.sources import csv_import
 
 # ---------------------------------------------------------------- palette
@@ -202,6 +203,34 @@ def show_table(t: pd.DataFrame):
 
 
 with tabs[1]:
+    st.markdown("#### 💡 Buy-level watch")
+    watch = signals.buy_watch(table)
+    if watch.empty:
+        st.info("No company currently meets the buy-level screen "
+                "(thresholds in `ahmon/config.py`).")
+    else:
+        st.dataframe(
+            watch, hide_index=True, use_container_width=True,
+            height=min(420, 60 + 35 * len(watch)),
+            column_config={
+                **{c: st.column_config.NumberColumn(format="%.2f")
+                   for c in watch.columns
+                   if watch[c].dtype.kind in "fi"},
+                "Why flagged": st.column_config.TextColumn(width="large"),
+            })
+    st.caption(
+        f"Rule-based screen, **not investment advice** — flags H shares "
+        f"whose premium is ≥{config.SIGNAL_MIN_5Y_PERCENTILE:.0f}th "
+        f"percentile of their own 5-year range with "
+        f"≥{config.SIGNAL_MIN_H_UPSIDE_PCT:.0f}% H upside on reversion to "
+        f"their 5y median, plus at least "
+        f"{config.SIGNAL_MIN_QUALITY_HITS} of: H yield "
+        f"≥{config.SIGNAL_MIN_H_DIV_YIELD:.0f}%, H P/E "
+        f"≤{config.SIGNAL_MAX_H_PE:.0f}×, H mkt cap "
+        f"≥{config.SIGNAL_MIN_H_MKTCAP_HKD/1e9:.0f}bn HKD. Signals are "
+        "only raised on live data, and each is logged once per day to "
+        "the Alerts tab. Thresholds are editable in `ahmon/config.py`.")
+    st.divider()
     groups = {
         "Focus Holdings": table[table["Classification"] == config.FOCUS],
         "Other Portfolio Holdings":
@@ -448,9 +477,18 @@ with tabs[7]:
     st.divider()
     st.subheader("Automated monthly commentary")
     st.markdown(commentary.period_commentary(table, "1m"))
-    st.caption("Phase 4 will run these on schedule: daily after HK close, "
-               "weekly on Friday, and a month-end report on the final "
-               "trading day.")
+    st.caption("The scheduler (`python -m ahmon.scheduler`) stores these "
+               "automatically: daily + closing after the HK close, weekly "
+               "on Friday, monthly on the month's last trading day.")
+    with st.expander("Stored commentary history (written by the scheduler)"):
+        hist = db.commentary_df(conn)
+        if hist.empty:
+            st.info("Nothing stored yet — start the scheduler to record "
+                    "commentary after each HK close.")
+        else:
+            for _, r in hist.iterrows():
+                st.markdown(f"**{r['ts']} · {r['kind']}**\n\n{r['body']}")
+                st.divider()
 
 # --------------------------------------------------------------- 9 Health
 with tabs[8]:

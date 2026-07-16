@@ -146,8 +146,40 @@ def refresh_hsahp(conn, hsahp_source=None) -> dict:
             "full_backfill": last is None}
 
 
+def write_intraday_ticks(conn, quotes, comps, fx: float, now_iso: str,
+                         a_is_close: bool) -> int:
+    """5-minute-style intraday snapshot for Focus Holdings (scheduler use).
+    a_is_close=1 marks ticks taken while the mainland market is closed —
+    the A price is then the latest A close, not a live print."""
+    focus = comps[comps["classification"] == config.FOCUS]
+    em = quotes.set_index("h_ticker")
+    ticks = []
+    for h_ticker, c in focus.iterrows():
+        if h_ticker not in em.index:
+            continue
+        q = em.loc[h_ticker]
+        ticks.append({
+            "company_id": int(c["id"]), "ts": now_iso,
+            "a_price": float(q["a_price_cny"]),
+            "h_price": float(q["h_price_hkd"]), "fx": fx,
+            "premium_calc": calc.a_share_premium(
+                q["a_price_cny"], q["h_price_hkd"], fx),
+            "premium_src": float(q["premium_src"]),
+            "a_is_close": int(a_is_close),
+        })
+    conn.executemany(
+        """INSERT OR REPLACE INTO intraday_obs
+           (company_id, ts, a_price, h_price, fx, premium_calc,
+            premium_src, a_is_close)
+           VALUES (:company_id,:ts,:a_price,:h_price,:fx,:premium_calc,
+                   :premium_src,:a_is_close)""", ticks)
+    conn.commit()
+    return len(ticks)
+
+
 def refresh_live(conn, ak_source=None, yahoo_source=None,
-                 verify_n: int = 10, hsahp_source=None) -> dict:
+                 verify_n: int = 10, hsahp_source=None,
+                 write_intraday: bool = False) -> dict:
     """One full live refresh. Returns a summary dict; raises on a failure
     of a primary step (after recording it in source_health)."""
     if ak_source is None:
@@ -286,6 +318,11 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
     db.insert_daily(conn, rows)
     if stat_rows:
         db.upsert_stats(conn, stat_rows)
+    if write_intraday:
+        from . import market_hours
+        summary["intraday_ticks"] = write_intraday_ticks(
+            conn, quotes, comps, fx, now,
+            a_is_close=not market_hours.cn_open())
     summary["upserted"] = len(rows)
     summary["calc_vs_source_flags"] = discrepancies
 

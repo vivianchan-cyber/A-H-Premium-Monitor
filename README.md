@@ -20,12 +20,16 @@ pip install -r requirements.txt
 # note: in restricted environments install akshare with --no-deps
 # (its jsonpath dep may not build) — see docs/source_notes.md §3a
 
-# Live mode (Phase 2)
+# Live mode (Phase 2+)
 python -m ahmon.refresh                      # builds/updates data/ahmon_live.db
 python -m ahmon.backfill                     # ~6y daily history (one-time,
                                              # resumable; enables the 5y
                                              # median/percentile/gap metrics)
 AHMON_DB=data/ahmon_live.db streamlit run app.py
+
+# Phase 4: automatic refresh during HK/mainland trading hours, alerts,
+# buy-level signals and post-close commentary — run alongside the app:
+AHMON_DB=data/ahmon_live.db python -m ahmon.scheduler
 
 # Sample mode (Phase 1 synthetic data)
 python -m ahmon.sample_data                  # builds data/ahmon.db
@@ -86,6 +90,33 @@ Positive = the A share trades above its H counterpart. This is the opposite
 of AASTOCKS' displayed convention (H relative to A); external figures are
 converted before storage, and a calculated-vs-source difference > 1pp fires
 an alert. Full rules in `CLAUDE.md`.
+
+## Where does the dashboard run? (there is no public website)
+
+This is a **local application**: the dashboard exists at
+`http://localhost:8501` on whatever machine runs `streamlit run app.py`,
+and its database is a local file. Nothing is published to the internet.
+To use it day-to-day:
+
+1. **Your own computer** (recommended): clone this repository, follow the
+   Quick start above, keep `python -m ahmon.scheduler` running during
+   market hours. Bookmark `http://localhost:8501`.
+2. **A small always-on machine** (home server / NAS / cheap VPS): same
+   commands; open the port only to your own network. The app has **no
+   authentication**, so do not expose it to the public internet as-is.
+3. **Streamlit Community Cloud** can host public apps free of charge, but
+   that makes the dashboard (and your Focus/portfolio classifications)
+   visible to anyone with the URL — not recommended without adding
+   authentication first.
+
+## Buy-level watch
+
+The Stock Monitor tab opens with a rule-based screen that flags H shares
+whose premium setup is historically stretched, with a written reason per
+flag (reversion upside, 5-year percentile, dividend yield, P/E, size).
+Thresholds live in `ahmon/config.py` (`SIGNAL_*`). The scheduler logs
+each flag to the Alerts tab once per day. **This is a screen, not
+investment advice.**
 
 ## Managing classifications
 

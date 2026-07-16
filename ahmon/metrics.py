@@ -8,7 +8,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from . import calc, config, db
+from . import calc, config, db, market_hours
 
 
 def _series(g: pd.DataFrame, col: str) -> pd.Series:
@@ -37,12 +37,11 @@ def monitor_table(conn) -> pd.DataFrame:
         r52 = calc.rolling_stats(prem, config.WINDOW_1Y)
         st = (stats.loc[c["id"]].to_dict()
               if stats is not None and c["id"] in stats.index else {})
-        updated = pd.to_datetime(last["updated_at"])
-        stale_after = config.STALE_MINUTES.get(c["classification"], 60)
-        is_sample = last["quality"] == "sample"
-        if is_sample:
+        if last["quality"] == "sample":
             quality = "sample"
-        elif (now - updated).total_seconds() / 60 > stale_after:
+        elif market_hours.is_stale(last["updated_at"],
+                                   c["classification"] or config.OTHER,
+                                   now=now):
             quality = "stale"
         else:
             quality = last["quality"]

@@ -16,6 +16,6 @@ tabulate>=0.8.6         # akshare runtime dep + markdown validation tables
 #                       # its TLS impersonation fails behind egress proxies;
 #                       # ahmon/sources/yahoo.py calls the chart API directly.
 
-# Phase 4+ (scheduling) — uncomment when that phase begins
-# apscheduler>=3.10    # trading-hours refresh scheduler
-# exchange-calendars>=4.5  # HKEX / SSE trading-day & holiday awareness
+# Phase 4 (scheduler, market-hours awareness)
+apscheduler>=3.10        # trading-hours refresh scheduler
+exchange-calendars>=4.5  # HKEX / SSE trading-day & holiday awareness

@@ -92,6 +92,12 @@ CREATE TABLE IF NOT EXISTS source_health (
     last_error TEXT,
     message TEXT
 );
+CREATE TABLE IF NOT EXISTS commentary_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    kind TEXT NOT NULL,            -- daily | weekly | monthly | closing
+    body TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS constituent_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -281,6 +287,20 @@ def alerts_df(conn, limit: int = 500) -> pd.DataFrame:
     return pd.read_sql_query(
         "SELECT ts, rule, company, severity, message FROM alerts_log "
         "ORDER BY id DESC LIMIT ?", conn, params=(limit,))
+
+
+# --------------------------------------------------------------- commentary
+
+def insert_commentary(conn, kind: str, body: str):
+    conn.execute("INSERT INTO commentary_log (ts, kind, body) VALUES (?,?,?)",
+                 (now_iso(), kind, body))
+    conn.commit()
+
+
+def commentary_df(conn, limit: int = 100) -> pd.DataFrame:
+    return pd.read_sql_query(
+        "SELECT ts, kind, body FROM commentary_log ORDER BY id DESC LIMIT ?",
+        conn, params=(limit,))
 
 
 # ------------------------------------------------------------ source health

@@ -8,13 +8,21 @@ import pandas as pd
 from . import config, db
 
 
-def evaluate(conn, table: pd.DataFrame) -> pd.DataFrame:
+def evaluate(conn, table: pd.DataFrame,
+             dedupe_daily: bool = False) -> pd.DataFrame:
     """Run all configured rules against the current monitor table.
-    Returns the fired alerts and writes them to the log (idempotence is the
-    caller's concern — the dashboard calls this once per data refresh)."""
+    Returns the fired alerts and writes them to the log. With
+    dedupe_daily=True a given (rule, company) is logged at most once per
+    calendar day — required when the scheduler evaluates every few
+    minutes; the dashboard button keeps the immediate behaviour."""
     fired = []
+    today = db.now_iso()[:10]
 
     def fire(rule, company, message, severity="warning"):
+        if dedupe_daily and conn.execute(
+                "SELECT 1 FROM alerts_log WHERE rule=? AND company IS ? "
+                "AND ts LIKE ?", (rule, company, f"{today}%")).fetchone():
+            return
         fired.append({"rule": rule, "company": company, "severity": severity,
                       "message": message})
         db.log_alert(conn, rule, message, company, severity)

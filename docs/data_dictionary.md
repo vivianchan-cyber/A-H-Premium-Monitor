@@ -59,6 +59,10 @@ Source: Eastmoney quote API (ulist), both legs per company; missing values
 Date-keyed HSAHP closes with the supplying `source` (`sample`,
 `manual_import`, later `factsheet`/`mirror`).
 
+### commentary_log
+Scheduler-written commentary: timestamp, kind (`daily` | `closing` |
+`weekly` | `monthly`), markdown body. Shown in the Commentary tab.
+
 ### alerts_log / source_health / constituent_log
 Fired alerts (rule, severity, message); per-source status
 (`ok|degraded|failed|stale|sample`, last success/error); added/removed
