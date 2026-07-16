@@ -169,7 +169,8 @@ with tabs[0]:
 DISPLAY_COLS = [
     "Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
     "Sector", "H Price (HKD)", "A Price (CNY)", "HKD/CNY",
-    "Premium calc (%)", "Premium src (%)", "Calc-src diff (pp)",
+    "Premium calc (%)", "H discount to A (%)",
+    "H upside to 5y median (%)", "Premium src (%)", "Calc-src diff (pp)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
     "H 1d ret (%)", "A 1d ret (%)",
     "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
@@ -289,15 +290,21 @@ with tabs[3]:
         "Full A–H Universe": table,
     }
     st.markdown(
-        "**Reading the premium for buy decisions:** the premium is the "
-        "A share **over** the H share, and *Dist from 5y median* is "
-        "today's premium minus that company's own 5-year median. A "
-        "**positive** gap / high 5y percentile means the premium is "
-        "unusually wide → the **H share is historically cheap relative "
-        "to its A share**; a **negative** gap / low percentile means the "
-        "premium is unusually narrow → the **A share is the historically "
-        "cheap leg**. Always compare a company against its *own* history "
-        "— absolute premium levels differ hugely across companies.")
+        "**Read everything as H-share upside** (the H leg is the one a "
+        "southbound/foreign investor can buy, and the working thesis is "
+        "that H converges toward A over time). *H discount to A* is how "
+        "far the H share trades below its A twin — a 100% premium means "
+        "the H share costs half the A price, so full convergence would "
+        "return the premium itself. Full convergence has been rare "
+        "historically, so the conservative anchor is each company's own "
+        "5-year median premium: **H upside to 5y median** is the H-share "
+        "return if today's premium merely reverts to that norm (A price "
+        "and FX unchanged). Positive = the discount is wider than usual "
+        "→ extra reversion upside; negative = the premium is already "
+        "narrower than its own norm — the convergence you are betting on "
+        "has largely played out. Always compare a company against its "
+        "*own* history: absolute premium levels differ hugely across "
+        "companies.")
     c1, c2 = st.columns(2)
     scope = c1.selectbox("Universe", list(rank_scopes))
     key = c2.selectbox("Ranking", list(metrics.RANKINGS))

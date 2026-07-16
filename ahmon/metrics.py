@@ -83,6 +83,17 @@ def monitor_table(conn) -> pd.DataFrame:
             "Dist from 5y median (pp)":
                 None if r5["median"] is None
                 else last["premium_calc"] - r5["median"],
+            # H-buyer framing: the H share trades at a discount to its A
+            # twin; closing the gap entirely would return the premium
+            # itself. The realistic anchor is the company's own 5y median:
+            # H upside = (1+p_today)/(1+p_median) - 1 with A price and FX
+            # held constant.
+            "H discount to A (%)":
+                (1.0 - 1.0 / (1.0 + last["premium_calc"] / 100.0)) * 100.0,
+            "H upside to 5y median (%)":
+                None if r5["median"] is None
+                else ((1.0 + last["premium_calc"] / 100.0)
+                      / (1.0 + r5["median"] / 100.0) - 1.0) * 100.0,
             "5y percentile": r5["percentile"],
             "52w percentile": r52["percentile"],
             "52w high (pp)": r52["high"], "52w low (pp)": r52["low"],
@@ -106,12 +117,14 @@ def monitor_table(conn) -> pd.DataFrame:
 # ------------------------------------------------------------------ rankings
 
 RANKINGS = {
-    "Largest A-share premium": ("Premium calc (%)", False),
-    "Smallest premium / H above A": ("Premium calc (%)", True),
-    "Premium far BELOW its 5y median — A relatively cheap":
-        ("Dist from 5y median (pp)", True),
-    "Premium far ABOVE its 5y median — H relatively cheap":
+    "Largest H upside if premium reverts to its 5y median":
+        ("H upside to 5y median (%)", False),
+    "Deepest H discount to A (widest premium)": ("Premium calc (%)", False),
+    "Smallest H discount / H above A": ("Premium calc (%)", True),
+    "Premium above its own 5y norm (extra reversion upside)":
         ("Dist from 5y median (pp)", False),
+    "Premium below its own 5y norm (convergence already played out)":
+        ("Dist from 5y median (pp)", True),
     "Premium near 5y floor (lowest 5y percentile)": ("5y percentile", True),
     "Fastest 1-day narrowing": ("Δ1d (pp)", True),
     "Fastest 1-month narrowing": ("Δ1m (pp)", True),
@@ -130,8 +143,9 @@ def rankings(table: pd.DataFrame, key: str, n: int = 10) -> pd.DataFrame:
     else:
         t = t.sort_values(col, ascending=ascending)
     cols = ["Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
-            "Premium calc (%)", "Δ1d (pp)", "Δ1m (pp)", "5y median (pp)",
-            "Dist from 5y median (pp)", "5y percentile", "52w percentile",
+            "Premium calc (%)", "H discount to A (%)", "5y median (pp)",
+            "Dist from 5y median (pp)", "H upside to 5y median (%)",
+            "5y percentile", "52w percentile", "Δ1m (pp)",
             "H div yield (%)", "P/E (H)", col]
     return t[list(dict.fromkeys(cols))].head(n).reset_index(drop=True)
 

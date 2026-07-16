@@ -123,9 +123,23 @@ class TestFiveYearValuationMetrics:
 
     def test_valuation_rankings_available(self, conn_with_history):
         t = metrics.monitor_table(conn_with_history)
-        for key in ("Premium far BELOW its 5y median — A relatively cheap",
-                    "Premium far ABOVE its 5y median — H relatively cheap",
+        for key in ("Largest H upside if premium reverts to its 5y median",
+                    "Premium above its own 5y norm (extra reversion upside)",
+                    "Premium below its own 5y norm (convergence already "
+                    "played out)",
                     "Premium near 5y floor (lowest 5y percentile)"):
             rk = metrics.rankings(t, key)
             assert len(rk) == 1
-            assert "Dist from 5y median (pp)" in rk.columns
+            assert "H upside to 5y median (%)" in rk.columns
+
+    def test_h_centric_metrics(self, conn_with_history):
+        t = metrics.monitor_table(conn_with_history).iloc[0]
+        p = t["Premium calc (%)"]
+        # premium 100% would put H at half the A price; here p = 55.96
+        assert t["H discount to A (%)"] == pytest.approx(
+            (1 - 1 / (1 + p / 100)) * 100)
+        # H return if the premium reverts to the 5y median
+        expected = ((1 + p / 100) / (1 + t["5y median (pp)"] / 100) - 1) * 100
+        assert t["H upside to 5y median (%)"] == pytest.approx(expected)
+        # premium is at its 5y max here, so reversion upside is positive
+        assert t["H upside to 5y median (%)"] > 0
