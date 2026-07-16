@@ -44,6 +44,34 @@ EM_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                             "Chrome/126.0.0.0 Safari/537.36"}
 
 
+# Per-stock fundamentals from the same quote API (ulist variant, explicit
+# secids). Field ids verified empirically 2026-07-15 — including via the
+# premium identity: H yield / A yield reproduced (1 + premium) exactly.
+#   f9  = P/E (TTM, ×100)      f23  = P/B (×100)
+#   f20 = total market cap in the leg's own currency (raw)
+#   f133 = dividend yield in % (raw float)
+EM_ULIST_URL = "/api/qt/ulist.np/get"
+EM_STATS_FIELDS = "f12,f13,f14,f9,f20,f23,f133"
+EM_HOSTS = ["https://push2.eastmoney.com", "https://push2delay.eastmoney.com"]
+
+
+def parse_ulist_stats(rows: list[dict]) -> pd.DataFrame:
+    """Decode raw ulist rows into per-leg stats. f13: 116=HK, 1=SH, 0=SZ."""
+    out = []
+    for r in rows:
+        num = lambda k, scale=1.0: (  # noqa: E731
+            None if r.get(k) in (None, "-", "") else float(r[k]) / scale)
+        out.append({
+            "code": str(r["f12"]),
+            "leg": "H" if r.get("f13") == 116 else "A",
+            "pe_ttm": num("f9", 100.0),
+            "pb": num("f23", 100.0),
+            "mktcap": num("f20"),
+            "div_yield_pct": num("f133"),
+        })
+    return pd.DataFrame(out)
+
+
 def _fetch_em_mirror() -> pd.DataFrame:
     """Same AH comparison table from the delayed mirror, reproducing
     akshare's column names and scaling exactly (verified against the
@@ -191,3 +219,55 @@ class AkshareSource(Source):
                             * df["h_price_hkd"] / df["a_price_cny"])
         df.attrs["convention"] = convention
         return df
+
+    def fetch_stats(self, pairs: list[tuple[str, str]]) -> pd.DataFrame:
+        """Per-company fundamentals for both legs: P/E (TTM), P/B, market
+        cap (leg currency) and dividend yield. `pairs` is a list of
+        (h_ticker, a_ticker). Returns one row per h_ticker with h_*/a_*
+        columns; missing values stay None (never guessed)."""
+        secid_to_h: dict[str, str] = {}
+        secids = []
+        for h, a in pairs:
+            h_code = tickers.em_from_h(h)
+            a_code, _, suffix = a.partition(".")
+            a_mkt = "1" if suffix.upper() == "SS" else "0"
+            secids.append(f"116.{h_code}")
+            secids.append(f"{a_mkt}.{a_code}")
+            secid_to_h[f"H:{h_code}"] = h
+            secid_to_h[f"A:{a_code}"] = h
+
+        raw_rows: list[dict] = []
+        for i in range(0, len(secids), 50):
+            batch = ",".join(secids[i:i + 50])
+
+            def call(batch=batch):
+                last = None
+                for base in EM_HOSTS:
+                    try:
+                        r = requests.get(
+                            base + EM_ULIST_URL,
+                            params={"fltt": "1", "invt": "2", "np": "1",
+                                    "secids": batch,
+                                    "fields": EM_STATS_FIELDS},
+                            headers=EM_HEADERS, timeout=20)
+                        r.raise_for_status()
+                        return r.json()["data"]["diff"]
+                    except Exception as e:   # noqa: BLE001
+                        last = e
+                raise last
+
+            raw_rows.extend(with_retries(call, attempts=3, base_delay=2.0))
+            time.sleep(0.3)
+
+        stats = parse_ulist_stats(raw_rows)
+        stats["h_ticker"] = (stats["leg"] + ":" + stats["code"]).map(secid_to_h)
+        stats = stats.dropna(subset=["h_ticker"])
+        wide = {}
+        for _, s in stats.iterrows():
+            leg = s["leg"].lower()
+            row = wide.setdefault(s["h_ticker"], {"h_ticker": s["h_ticker"]})
+            row[f"{leg}_pe"] = s["pe_ttm"]
+            row[f"{leg}_pb"] = s["pb"]
+            row[f"{leg}_mktcap"] = s["mktcap"]
+            row[f"{leg}_div_yield"] = s["div_yield_pct"]
+        return pd.DataFrame(list(wide.values()))

@@ -189,11 +189,48 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
         summary["date_anchor"] = f"yahoo:{DATE_ANCHOR_H}"
     summary["obs_date"] = obs_date
 
+    # 4b — English names for companies the universe sync just added
+    if uni["added"]:
+        from .enrich import enrich_english_names
+        try:
+            enr = enrich_english_names(conn, yahoo_source,
+                                       limit=len(uni["added"]) + 5,
+                                       log=lambda *_: None)
+            summary["names_enriched"] = enr["updated"]
+        except Exception:            # enrichment is cosmetic — never fatal
+            summary["names_enriched"] = 0
+
+    # 4c — fundamentals for both legs (P/E, P/B, market cap, div yield).
+    # Non-fatal: prices/premium remain valid without them; the gap is
+    # visible (None columns) and recorded, never papered over.
+    stats_by_ticker: dict = {}
+    try:
+        stats = ak_source.fetch_stats(
+            list(zip(quotes["h_ticker"], quotes["a_ticker"])))
+        stats_by_ticker = {s["h_ticker"]: s for s in
+                           stats.to_dict("records")}
+        summary["stats_fetched"] = len(stats_by_ticker)
+    except Exception as e:
+        summary["stats_fetched"] = 0
+        alert("stats_fetch", f"fundamentals fetch failed: {e}",
+              severity="warning")
+
     comps = db.companies_df(conn).set_index("h_ticker")
     now = db.now_iso()
-    rows, discrepancies = [], 0
+    rows, stat_rows, discrepancies = [], [], 0
     for _, q in quotes.iterrows():
         cid = int(comps.loc[q["h_ticker"], "id"])
+        st = stats_by_ticker.get(q["h_ticker"], {})
+        if st:
+            stat_rows.append({
+                "company_id": cid,
+                "h_mktcap_hkd": st.get("h_mktcap"),
+                "a_mktcap_cny": st.get("a_mktcap"),
+                "h_pe": st.get("h_pe"), "a_pe": st.get("a_pe"),
+                "h_pb": st.get("h_pb"), "a_pb": st.get("a_pb"),
+                "h_div_yield": st.get("h_div_yield"),
+                "a_div_yield": st.get("a_div_yield"),
+                "updated_at": now})
         prem = calc.a_share_premium(q["a_price_cny"], q["h_price_hkd"], fx)
         if calc.discrepancy_flag(prem, q["premium_src"]):
             discrepancies += 1
@@ -209,10 +246,13 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
             "a_close": float(q["a_price_cny"]),
             "h_close": float(q["h_price_hkd"]), "fx": fx,
             "premium_calc": prem, "premium_src": float(q["premium_src"]),
-            "a_div_yield": None, "h_div_yield": None,
+            "a_div_yield": st.get("a_div_yield"),
+            "h_div_yield": st.get("h_div_yield"),
             "quality": "live", "updated_at": now,
         })
     db.insert_daily(conn, rows)
+    if stat_rows:
+        db.upsert_stats(conn, stat_rows)
     summary["upserted"] = len(rows)
     summary["calc_vs_source_flags"] = discrepancies
 

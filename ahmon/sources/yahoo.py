@@ -59,6 +59,7 @@ class YahooSource(Source):
                 "currency": meta["currency"],
                 "market_time": datetime.fromtimestamp(
                     meta["regularMarketTime"], tz=config.TZ),
+                "name_en": meta.get("longName") or meta.get("shortName"),
             }
         except (KeyError, IndexError, TypeError) as e:
             raise SchemaChangeError(
@@ -161,6 +162,10 @@ class YahooSource(Source):
                 row["error"] = f"{type(e).__name__}: {e}"
             rows.append(row)
         return pd.DataFrame(rows)
+
+    def fetch_english_name(self, h_ticker: str) -> str | None:
+        """English company name from the H-share quote metadata."""
+        return self._chart_meta(tickers.yahoo_h_symbol(h_ticker))["name_en"]
 
     def fetch_universe(self) -> pd.DataFrame:
         raise NotImplementedError(

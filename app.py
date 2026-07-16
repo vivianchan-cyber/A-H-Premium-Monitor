@@ -167,18 +167,21 @@ with tabs[0]:
 
 # ------------------------------------------------------- 2 Stock Monitor
 DISPLAY_COLS = [
-    "Company", "Classification", "Sector", "H Ticker", "A Ticker",
-    "H Price (HKD)", "A Price (CNY)", "HKD/CNY", "Premium calc (%)",
-    "Premium src (%)", "Calc-src diff (pp)", "Δ1d (pp)", "Δ1w (pp)",
-    "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)", "H 1d ret (%)",
-    "A 1d ret (%)", "H div yield (%)", "A div yield (%)", "3y median (pp)",
+    "Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
+    "Sector", "H Price (HKD)", "A Price (CNY)", "HKD/CNY",
+    "Premium calc (%)", "Premium src (%)", "Calc-src diff (pp)",
+    "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
+    "H 1d ret (%)", "A 1d ret (%)",
+    "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
+    "H div yield (%)", "A div yield (%)", "P/E (H)", "P/E (A)",
+    "P/B (H)", "P/B (A)", "3y median (pp)",
     "5y median (pp)", "Dist from 5y median (pp)", "5y percentile",
     "Dist from 3y median (pp)", "52w percentile",
     "Updated", "Quality"]
 
 
-TEXT_COLS = {"Company", "Classification", "Sector", "H Ticker", "A Ticker",
-             "Updated", "Quality"}
+TEXT_COLS = {"Company", "Name (ZH)", "Classification", "Sector", "H Ticker",
+             "A Ticker", "Updated", "Quality"}
 NUM_CONFIG = {c: st.column_config.NumberColumn(format="%.2f")
               for c in DISPLAY_COLS if c not in TEXT_COLS}
 
@@ -285,6 +288,16 @@ with tabs[3]:
         "Other A–H Stocks": groups["Other A–H Stocks"],
         "Full A–H Universe": table,
     }
+    st.markdown(
+        "**Reading the premium for buy decisions:** the premium is the "
+        "A share **over** the H share, and *Dist from 5y median* is "
+        "today's premium minus that company's own 5-year median. A "
+        "**positive** gap / high 5y percentile means the premium is "
+        "unusually wide → the **H share is historically cheap relative "
+        "to its A share**; a **negative** gap / low percentile means the "
+        "premium is unusually narrow → the **A share is the historically "
+        "cheap leg**. Always compare a company against its *own* history "
+        "— absolute premium levels differ hugely across companies.")
     c1, c2 = st.columns(2)
     scope = c1.selectbox("Universe", list(rank_scopes))
     key = c2.selectbox("Ranking", list(metrics.RANKINGS))

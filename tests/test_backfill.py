@@ -123,9 +123,9 @@ class TestFiveYearValuationMetrics:
 
     def test_valuation_rankings_available(self, conn_with_history):
         t = metrics.monitor_table(conn_with_history)
-        for key in ("Cheapest vs 5y median (largest negative gap)",
-                    "Richest vs 5y median (largest positive gap)",
-                    "Lowest 5y percentile (premium near 5y floor)"):
+        for key in ("Premium far BELOW its 5y median — A relatively cheap",
+                    "Premium far ABOVE its 5y median — H relatively cheap",
+                    "Premium near 5y floor (lowest 5y percentile)"):
             rk = metrics.rankings(t, key)
             assert len(rk) == 1
             assert "Dist from 5y median (pp)" in rk.columns

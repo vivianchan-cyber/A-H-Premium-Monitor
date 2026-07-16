@@ -43,6 +43,18 @@ Append-only log: company, old → new classification, timestamp, source
 Same price/premium fields at 5-minute resolution; `a_is_close=1` marks
 ticks taken after the mainland close (A price = latest A-share close).
 
+### company_stats (one row per company, refreshed with each live refresh)
+| column | meaning |
+|---|---|
+| h_mktcap_hkd / a_mktcap_cny | total market value priced off each leg (HKD / CNY) |
+| h_pe / a_pe | trailing (TTM) price-to-earnings per leg |
+| h_pb / a_pb | price-to-book per leg |
+| h_div_yield / a_div_yield | dividend yield % per leg (H yield ≈ A yield × (1 + premium) — the identity used to verify the source fields) |
+| updated_at | last refresh (Asia/Singapore ISO) |
+
+Source: Eastmoney quote API (ulist), both legs per company; missing values
+(e.g. zero-dividend or loss-making companies) stay NULL — never guessed.
+
 ### hsahp_daily
 Date-keyed HSAHP closes with the supplying `source` (`sample`,
 `manual_import`, later `factsheet`/`mirror`).
@@ -53,7 +65,9 @@ Fired alerts (rule, severity, message); per-source status
 A–H constituents detected on universe refresh.
 
 ## Monitor-table columns (dashboard)
-Derived in `ahmon/metrics.py`: latest prices and FX; `Premium calc (%)`;
+Derived in `ahmon/metrics.py`: English and Chinese company names with both
+stock codes (H ticker / A ticker); latest prices and FX; `Premium calc (%)`;
+per-leg market cap (bn, leg currency), P/E (TTM), P/B and dividend yields;
 `Premium src (%)`; `Calc-src diff (pp)`; premium changes Δ1d/Δ1w/Δ1m/Δ3m/
 ΔYTD/Δ1y (percentage points); H/A 1-day returns (%); dividend yields;
 **historical valuation metrics** — 3y & 5y median premium, distance (gap)

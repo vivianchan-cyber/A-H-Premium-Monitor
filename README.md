@@ -62,6 +62,8 @@ ahmon/sample_data.py    deterministic Phase 1 sample data generator
 ahmon/refresh.py        live refresh pipeline (python -m ahmon.refresh)
 ahmon/backfill.py       multi-year history backfill for the 5y valuation
                         metrics (python -m ahmon.backfill)
+ahmon/enrich.py         English company names from Yahoo quote metadata
+                        (python -m ahmon.enrich)
 ahmon/validate.py       N-stock live validation table (python -m ahmon.validate)
 ahmon/sources/          source layer: schema guard, retry/backoff, ticker
                         normalisation, akshare/Eastmoney primary source

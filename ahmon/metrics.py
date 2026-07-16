@@ -19,6 +19,8 @@ def monitor_table(conn) -> pd.DataFrame:
     """One row per company with every field the Stock Monitor displays."""
     comps = db.companies_df(conn)
     obs = db.daily_df(conn)
+    stats = db.stats_df(conn)
+    stats = stats.set_index("company_id") if not stats.empty else None
     rows = []
     now = datetime.now(config.TZ)
     for _, c in comps.iterrows():
@@ -33,6 +35,8 @@ def monitor_table(conn) -> pd.DataFrame:
         r3 = calc.rolling_stats(prem, config.WINDOW_3Y)
         r5 = calc.rolling_stats(prem, config.WINDOW_5Y)
         r52 = calc.rolling_stats(prem, config.WINDOW_1Y)
+        st = (stats.loc[c["id"]].to_dict()
+              if stats is not None and c["id"] in stats.index else {})
         updated = pd.to_datetime(last["updated_at"])
         stale_after = config.STALE_MINUTES.get(c["classification"], 60)
         is_sample = last["quality"] == "sample"
@@ -58,8 +62,20 @@ def monitor_table(conn) -> pd.DataFrame:
             "Δ3m (pp)": ch["3m"], "ΔYTD (pp)": ch["ytd"], "Δ1y (pp)": ch["1y"],
             "H 1d ret (%)": calc.pct_return(h),
             "A 1d ret (%)": calc.pct_return(a),
-            "H div yield (%)": last["h_div_yield"],
-            "A div yield (%)": last["a_div_yield"],
+            "H div yield (%)": (last["h_div_yield"]
+                                if last["h_div_yield"] is not None
+                                else st.get("h_div_yield")),
+            "A div yield (%)": (last["a_div_yield"]
+                                if last["a_div_yield"] is not None
+                                else st.get("a_div_yield")),
+            "Mkt cap H (HKD bn)":
+                None if st.get("h_mktcap_hkd") is None
+                else st["h_mktcap_hkd"] / 1e9,
+            "Mkt cap A (CNY bn)":
+                None if st.get("a_mktcap_cny") is None
+                else st["a_mktcap_cny"] / 1e9,
+            "P/E (H)": st.get("h_pe"), "P/E (A)": st.get("a_pe"),
+            "P/B (H)": st.get("h_pb"), "P/B (A)": st.get("a_pb"),
             "3y median (pp)": r3["median"], "5y median (pp)": r5["median"],
             "Dist from 3y median (pp)":
                 None if r3["median"] is None
@@ -92,11 +108,11 @@ def monitor_table(conn) -> pd.DataFrame:
 RANKINGS = {
     "Largest A-share premium": ("Premium calc (%)", False),
     "Smallest premium / H above A": ("Premium calc (%)", True),
-    "Cheapest vs 5y median (largest negative gap)":
+    "Premium far BELOW its 5y median — A relatively cheap":
         ("Dist from 5y median (pp)", True),
-    "Richest vs 5y median (largest positive gap)":
+    "Premium far ABOVE its 5y median — H relatively cheap":
         ("Dist from 5y median (pp)", False),
-    "Lowest 5y percentile (premium near 5y floor)": ("5y percentile", True),
+    "Premium near 5y floor (lowest 5y percentile)": ("5y percentile", True),
     "Fastest 1-day narrowing": ("Δ1d (pp)", True),
     "Fastest 1-month narrowing": ("Δ1m (pp)", True),
     "Fastest 1-month widening": ("Δ1m (pp)", False),
@@ -113,10 +129,10 @@ def rankings(table: pd.DataFrame, key: str, n: int = 10) -> pd.DataFrame:
         t = t.reindex(t[col].abs().sort_values(ascending=False).index)
     else:
         t = t.sort_values(col, ascending=ascending)
-    cols = ["Company", "Classification", "Sector", "Premium calc (%)",
-            "Δ1d (pp)", "Δ1m (pp)", "5y median (pp)",
-            "Dist from 5y median (pp)", "5y percentile",
-            "52w percentile", col]
+    cols = ["Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
+            "Premium calc (%)", "Δ1d (pp)", "Δ1m (pp)", "5y median (pp)",
+            "Dist from 5y median (pp)", "5y percentile", "52w percentile",
+            "H div yield (%)", "P/E (H)", col]
     return t[list(dict.fromkeys(cols))].head(n).reset_index(drop=True)
 
 
@@ -127,8 +143,9 @@ def extremes_52w(table: pd.DataFrame) -> pd.DataFrame:
         [t["52w percentile"] >= 98, t["52w percentile"] <= 2],
         ["New 52w high", "New 52w low"], default="")
     return t[t["52w extreme"] != ""][
-        ["Company", "Classification", "Premium calc (%)", "52w percentile",
-         "52w high (pp)", "52w low (pp)", "52w extreme"]]
+        ["Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
+         "Premium calc (%)", "52w percentile", "52w high (pp)",
+         "52w low (pp)", "52w extreme"]]
 
 
 # -------------------------------------------------------------------- sector

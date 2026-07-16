@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS hsahp_daily (
     source TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS company_stats (
+    company_id INTEGER PRIMARY KEY REFERENCES companies(id),
+    h_mktcap_hkd REAL, a_mktcap_cny REAL,
+    h_pe REAL, a_pe REAL,
+    h_pb REAL, a_pb REAL,
+    h_div_yield REAL, a_div_yield REAL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alerts_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -227,6 +235,36 @@ def hsahp_series(conn) -> pd.Series:
         return pd.Series(dtype=float)
     return pd.Series(df["close"].values,
                      index=pd.to_datetime(df["date"]), name="HSAHP")
+
+
+# -------------------------------------------------------------- fundamentals
+
+def upsert_stats(conn, rows: list[dict]):
+    """Idempotent per-company fundamentals (P/E, P/B, mkt cap, yields)."""
+    conn.executemany(
+        """INSERT INTO company_stats (company_id, h_mktcap_hkd, a_mktcap_cny,
+             h_pe, a_pe, h_pb, a_pb, h_div_yield, a_div_yield, updated_at)
+           VALUES (:company_id,:h_mktcap_hkd,:a_mktcap_cny,:h_pe,:a_pe,
+                   :h_pb,:a_pb,:h_div_yield,:a_div_yield,:updated_at)
+           ON CONFLICT(company_id) DO UPDATE SET
+             h_mktcap_hkd=excluded.h_mktcap_hkd,
+             a_mktcap_cny=excluded.a_mktcap_cny,
+             h_pe=excluded.h_pe, a_pe=excluded.a_pe,
+             h_pb=excluded.h_pb, a_pb=excluded.a_pb,
+             h_div_yield=excluded.h_div_yield,
+             a_div_yield=excluded.a_div_yield,
+             updated_at=excluded.updated_at""", rows)
+    conn.commit()
+
+
+def stats_df(conn) -> pd.DataFrame:
+    return pd.read_sql_query("SELECT * FROM company_stats", conn)
+
+
+def update_company_name_en(conn, company_id: int, name_en: str):
+    conn.execute("UPDATE companies SET name_en=? WHERE id=?",
+                 (name_en, company_id))
+    conn.commit()
 
 
 # ------------------------------------------------------------------- alerts
