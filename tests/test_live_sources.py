@@ -107,6 +107,18 @@ class FakeAkshare:
         return df
 
 
+class FakeHsahp:
+    name = "HSAHP index series"
+
+    def fetch_history(self, beg="0"):
+        idx = pd.to_datetime(["2026-07-14", "2026-07-15"])
+        s = pd.Series([124.5, 125.04], index=idx, name="HSAHP")
+        return s if beg == "0" else s[s.index >= pd.Timestamp(beg)]
+
+    def fetch_spot(self):
+        return {"level": 123.4, "prev_close": 125.04}
+
+
 class FakeYahoo:
     name = "Yahoo Finance (verification & FX)"
 
@@ -141,7 +153,8 @@ def live_conn(tmp_path):
 class TestRefreshLive:
     def run(self, conn):
         return refresh.refresh_live(conn, ak_source=FakeAkshare(),
-                                    yahoo_source=FakeYahoo())
+                                    yahoo_source=FakeYahoo(),
+                                    hsahp_source=FakeHsahp())
 
     def test_upserts_live_rows_with_independent_premium(self, live_conn):
         s = self.run(live_conn)
@@ -201,6 +214,37 @@ class TestRefreshLive:
             self.run(live_conn)
         assert (db.daily_df(live_conn)["quality"] == "sample").all()
 
+    def test_hsahp_series_stored_with_source_label(self, live_conn):
+        s = self.run(live_conn)
+        assert s["hsahp"]["upserted"] == 2
+        assert s["hsahp"]["full_backfill"] is True
+        hs = db.hsahp_series(live_conn)
+        assert len(hs) == 2 and hs.iloc[-1] == pytest.approx(125.04)
+        src = live_conn.execute(
+            "SELECT DISTINCT source FROM hsahp_daily").fetchall()
+        assert [r[0] for r in src] == ["eastmoney_mirror(100.HSAHP)"]
+        health = db.source_health_df(live_conn).set_index("source")
+        assert health.loc["HSAHP index series", "status"] == "ok"
+
+    def test_hsahp_second_run_incremental_and_idempotent(self, live_conn):
+        self.run(live_conn)
+        s = self.run(live_conn)
+        assert s["hsahp"]["full_backfill"] is False
+        assert len(db.hsahp_series(live_conn)) == 2   # no duplicates
+
+    def test_hsahp_failure_is_nonfatal_and_recorded(self, live_conn):
+        class BrokenHsahp(FakeHsahp):
+            def fetch_history(self, beg="0"):
+                raise RuntimeError("mirror down")
+        s = refresh.refresh_live(live_conn, ak_source=FakeAkshare(),
+                                 yahoo_source=FakeYahoo(),
+                                 hsahp_source=BrokenHsahp())
+        assert s["upserted"] == 3          # equity refresh unaffected
+        assert s["hsahp"] is None
+        health = db.source_health_df(live_conn).set_index("source")
+        assert health.loc["HSAHP index series", "status"] == "failed"
+        assert "hsahp_fetch" in db.alerts_df(live_conn)["rule"].tolist()
+
     def test_fx_divergence_degrades_source(self, live_conn):
         class SkewedYahoo(FakeYahoo):
             def fetch_fx(self):
@@ -208,7 +252,8 @@ class TestRefreshLive:
                 info["hkd_per_cny"] = FX * 1.01   # 1% off EM-implied
                 return info
         s = refresh.refresh_live(live_conn, ak_source=FakeAkshare(),
-                                 yahoo_source=SkewedYahoo())
+                                 yahoo_source=SkewedYahoo(),
+                                 hsahp_source=FakeHsahp())
         assert s["fx_divergence_pct"] > config.ALERT_FX_DIVERGENCE_PCT
         health = db.source_health_df(live_conn).set_index("source")
         assert health.loc[FakeAkshare.name, "status"] == "degraded"

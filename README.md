@@ -103,7 +103,8 @@ be converted to the dashboard's A-share-premium convention.
 
 1. ✅ Sample data: layout, calculations, database, tests
 2. ✅ akshare source connected, 10 stocks validated manually
-3. HSAHP index data and historical series
+3. ✅ HSAHP index data and historical series (validated Eastmoney mirror,
+   full daily history to 2006, refreshed with every live refresh)
 4. Scheduler (HK/mainland trading hours), alerts, commentary
 5. Full portfolio onboarding and design polish
 

@@ -113,8 +113,41 @@ def _guard_no_sample(conn):
             "as live, and live series must not mix with synthetic history)")
 
 
+def refresh_hsahp(conn, hsahp_source=None) -> dict:
+    """Update the HSAHP daily series from the validated Eastmoney mirror:
+    full history on first run, incremental (since the last stored date)
+    afterwards. Non-fatal by design — equity refresh continues if the
+    index mirror is down; the failure is recorded, never papered over."""
+    if hsahp_source is None:
+        from .sources.hsahp import HsahpSource
+        hsahp_source = HsahpSource()
+    from .sources.hsahp import SOURCE_LABEL
+
+    last = conn.execute(
+        "SELECT MAX(date) FROM hsahp_daily WHERE source=?",
+        (SOURCE_LABEL,)).fetchone()[0]
+    beg = "0" if last is None else \
+        pd.Timestamp(last).strftime("%Y%m%d")     # re-fetch last day too
+    series = hsahp_source.fetch_history(beg=beg)
+    now = db.now_iso()
+    db.insert_hsahp(conn, [{"date": d.strftime("%Y-%m-%d"),
+                            "close": float(v), "source": SOURCE_LABEL,
+                            "updated_at": now}
+                           for d, v in series.items()])
+    db.set_source_health(
+        conn, hsahp_source.name, "ok",
+        f"live: Eastmoney mirror of 100.HSAHP — {len(series)} closes "
+        f"upserted (through {series.index.max():%Y-%m-%d}; official series "
+        "is EOD, today's value is intraday until the close). Validated vs "
+        "our own cap-weighted premium (corr 0.95); monthly factsheet "
+        "remains the manual cross-check.")
+    return {"upserted": len(series),
+            "through": series.index.max().strftime("%Y-%m-%d"),
+            "full_backfill": last is None}
+
+
 def refresh_live(conn, ak_source=None, yahoo_source=None,
-                 verify_n: int = 10) -> dict:
+                 verify_n: int = 10, hsahp_source=None) -> dict:
     """One full live refresh. Returns a summary dict; raises on a failure
     of a primary step (after recording it in source_health)."""
     if ak_source is None:
@@ -295,12 +328,18 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
         conn, yahoo_source.name, "ok",
         f"live: CNYHKD=X {fx:.4f} (as of {fx_info['asof']:%H:%M}), "
         f"{verified} Focus names price-verified")
-    hs = conn.execute("SELECT COUNT(*) AS n FROM hsahp_daily").fetchone()["n"]
-    if not hs:
-        db.set_source_health(
-            conn, "HSAHP index series", "stale",
-            "no live HSAHP feed yet (Phase 3) — enter daily closes via the "
-            "CSV import if needed")
+
+    # HSAHP index (Phase 3) — non-fatal for the equity refresh
+    try:
+        hs = refresh_hsahp(conn, hsahp_source)
+        summary["hsahp"] = hs
+    except Exception as e:
+        db.set_source_health(conn, "HSAHP index series", "failed",
+                             f"mirror fetch failed: {e} — CSV import "
+                             "remains the fallback")
+        alert("hsahp_fetch", f"HSAHP mirror fetch failed: {e}",
+              severity="serious")
+        summary["hsahp"] = None
     return summary
 
 
@@ -327,6 +366,13 @@ def main(argv=None):
           f"{s['universe_missing']} DB companies missing from feed")
     print(f"Yahoo verification: {s['verified_vs_yahoo']} names checked, "
           f"{s['price_verification_flags']} price flags")
+    if s.get("hsahp"):
+        h = s["hsahp"]
+        print(f"HSAHP: {h['upserted']} closes upserted through "
+              f"{h['through']}"
+              + (" (full 2006→ backfill)" if h["full_backfill"] else ""))
+    else:
+        print("HSAHP: mirror fetch FAILED — see Health tab")
     if s["alerts"]:
         print(f"{len(s['alerts'])} alerts logged (see Alerts tab)")
     conn.close()

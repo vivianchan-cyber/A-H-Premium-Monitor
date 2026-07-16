@@ -181,6 +181,31 @@ fetch raises `ConventionError` instead of storing a wrong sign.
   `history_verification` and marks the backfill degraded
   (`source_health` row: "history backfill (Tencent prices + Yahoo FX)").
 
+### HSAHP mirror (Phase 3, validated 2026-07-16)
+- The Eastmoney quote/kline APIs carry the Hang Seng Stock Connect China
+  AH Premium Index as **secid `100.HSAHP`** ("AH股溢价"): spot level via
+  ulist, full daily history back to **2006-01-03** via the kline endpoint
+  (the index-secid kline works even though stock-secid klines are blocked
+  from this network).
+- **Validation before trust** (as required): history depth matches the
+  official index description (2006); the previous-close field agrees with
+  the last kline close; and (HSAHP − 100) tracks this project's own
+  independently computed cap-weighted average premium with **correlation
+  0.945** over the last ~15 months, with a stable ≈+7pp offset fully
+  explained by methodology (HSAHP is free-float-weighted over the liquid
+  Stock Connect subset; ours is total-H-cap-weighted over all ~200 pairs).
+  A stable offset with high correlation is the signature of the same
+  underlying quantity under a different weighting.
+- Ingestion guards: every value must lie in [60, 260] (the index has
+  ranged ~88–213 since 2006) or the series is refused; `hsahp_daily.source`
+  records `eastmoney_mirror(100.HSAHP)`; the official series is EOD, so
+  today's intraday mirror value is overwritten until the close is final.
+- The **monthly Hang Seng factsheet remains the manual cross-check**, and
+  CSV import remains the emergency fallback (both unchanged from §2).
+- Quirk: the push2 (non-history) host answers kline requests with an
+  empty list instead of an error; the source treats empty as failure so
+  a fallback host can never mask the real one.
+
 ### Live vs sample storage
 Live data is written to `data/ahmon_live.db` (`python -m ahmon.refresh`);
 the Phase 1 synthetic set stays in `data/ahmon.db`. The refresh **refuses

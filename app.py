@@ -65,7 +65,11 @@ def get_conn():
     return db.connect(config.DB_PATH)
 
 
+@st.cache_data(show_spinner="Computing monitor table…")
 def load(version: int):
+    """Heavy per-company metrics, cached per data version: widget
+    interactions rerun the script but reuse this result; refreshes and
+    imports bump st.session_state['data_version'] to force a recompute."""
     conn = get_conn()
     table = metrics.monitor_table(conn)
     att = metrics.attribution_table(conn, table)
