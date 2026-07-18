@@ -88,9 +88,8 @@ st.session_state.setdefault("data_version", 0)
 table, att = load(st.session_state["data_version"])
 hsahp = db.hsahp_series(conn)
 
-# ----------------------------------------------------------------- sidebar
-with st.sidebar:
-    st.title("A–H Premium Monitor")
+
+def sidebar_user_badge():
     if user.get("local_dev"):
         st.caption("🔓 local development mode — no login configured")
     else:
@@ -99,6 +98,50 @@ with st.sidebar:
         if c2.button("Log out"):
             auth.logout()
             st.rerun()
+
+
+# ------------------------------------------------- empty-database first run
+if table.empty:
+    with st.sidebar:
+        st.title("A–H Premium Monitor")
+        sidebar_user_badge()
+    st.info("📭 **No data available yet — migrate or refresh the "
+            "database.** The application is running and connected; its "
+            "database just has no market data in it.", icon="ℹ️")
+    if IS_ADMIN:
+        st.markdown(
+            "**To load data (admin):**\n\n"
+            "1. *Best*: migrate your existing local history — on your own "
+            "machine run\n"
+            "   ```bash\n"
+            "   DATABASE_URL=\"<DATABASE_PUBLIC_URL from Railway>\" \\\n"
+            "     python -m ahmon.migrate --sqlite data/ahmon_live.db "
+            "--replace\n"
+            "   ```\n"
+            "   (DEPLOYMENT.md §5), then reload this page; **or**\n"
+            "2. start fresh with a first live fetch (today's prices only — "
+            "the 5-year metrics need the backfill afterwards, Health tab):")
+        if st.button("🔄 Fetch live data now", type="primary"):
+            from ahmon import refresh as _refresh
+            with st.spinner("Seeding classifications and fetching live "
+                            "quotes…"):
+                try:
+                    _refresh.seed_portfolio(conn)
+                    _refresh.refresh_live(conn)
+                except Exception as e:   # noqa: BLE001 — shown, not hidden
+                    st.error(f"First fetch failed: {e}")
+                else:
+                    st.session_state["data_version"] += 1
+                    st.rerun()
+    else:
+        st.caption("Your account is read-only — please ask an admin to "
+                   "load the data.")
+    st.stop()
+
+# ----------------------------------------------------------------- sidebar
+with st.sidebar:
+    st.title("A–H Premium Monitor")
+    sidebar_user_badge()
     n_sample = int((table["Quality"] == "sample").sum())
     if n_sample == len(table):
         st.warning("**SAMPLE DATA** — Phase 1 synthetic data. "

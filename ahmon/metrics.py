@@ -15,6 +15,27 @@ def _series(g: pd.DataFrame, col: str) -> pd.Series:
     return pd.Series(g[col].values, index=pd.DatetimeIndex(g["date"]))
 
 
+# The monitor table's contract: these columns exist even with zero rows
+# (a fresh database must render an empty dashboard, never crash).
+MONITOR_COLUMNS = [
+    "Company", "Name (ZH)", "Classification", "Sector", "H Ticker",
+    "A Ticker", "H Price (HKD)", "A Price (CNY)", "HKD/CNY",
+    "Premium calc (%)", "Premium src (%)", "Calc-src diff (pp)",
+    "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)",
+    "Δ1y (pp)", "H 1d ret (%)", "A 1d ret (%)", "H div yield (%)",
+    "A div yield (%)", "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
+    "P/E (H)", "P/E (A)", "P/B (H)", "P/B (A)", "3y median (pp)",
+    "5y median (pp)", "Dist from 3y median (pp)",
+    "Dist from 5y median (pp)", "H discount to A (%)",
+    "H upside to 5y median (%)", "5y percentile", "52w percentile",
+    "52w high (pp)", "52w low (pp)", "Premium z (1y)", "Updated",
+    "Quality", "company_id"]
+
+ATTRIBUTION_COLUMNS = ["Company", "Classification", "Premium move (pp)",
+                       "Driver", "A contribution (pp)",
+                       "H contribution (pp)", "FX contribution (pp)"]
+
+
 def monitor_table(conn) -> pd.DataFrame:
     """One row per company with every field the Stock Monitor displays."""
     comps = db.companies_df(conn)
@@ -100,6 +121,8 @@ def monitor_table(conn) -> pd.DataFrame:
             "Updated": last["updated_at"], "Quality": quality,
             "company_id": c["id"],
         })
+    if not rows:
+        return pd.DataFrame(columns=MONITOR_COLUMNS)
     df = pd.DataFrame(rows)
     # With a single day of live history every change/percentile field is
     # None; coerce numeric columns to float (None -> NaN) so downstream
@@ -164,6 +187,11 @@ def extremes_52w(table: pd.DataFrame) -> pd.DataFrame:
 # -------------------------------------------------------------------- sector
 
 def sector_stats(conn, table: pd.DataFrame) -> pd.DataFrame:
+    if table.empty:
+        return pd.DataFrame(columns=[
+            "Sector", "Companies", "Median premium (%)",
+            "Weighted avg premium (%)", "Δ1m median (pp)",
+            "Δ1y median (pp)"])
     rows = []
     for sector, g in table.groupby("Sector"):
         weights = g["Premium calc (%)"] * 0 + 1.0   # equal weight fallback
@@ -209,8 +237,9 @@ def attribution_table(conn, table: pd.DataFrame) -> pd.DataFrame:
             "H contribution (pp)": round(att.h_contrib_pp, 2),
             "FX contribution (pp)": round(att.fx_contrib_pp, 2),
         })
+    if not rows:
+        return pd.DataFrame(columns=ATTRIBUTION_COLUMNS)
     df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.reindex(df["Premium move (pp)"].abs()
-                        .sort_values(ascending=False).index).reset_index(drop=True)
-    return df
+    return df.reindex(df["Premium move (pp)"].abs()
+                      .sort_values(ascending=False).index) \
+        .reset_index(drop=True)

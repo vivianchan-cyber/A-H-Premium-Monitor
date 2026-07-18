@@ -100,8 +100,9 @@ class TestBuySignals:
         w = signals.buy_watch(t)
         assert list(w["Company"]) == ["Bigger Upside", "Test Bank"]
         assert "Why flagged" in w.columns
-        assert signals.log_signals(conn, w, "2026-07-16") == 2
-        assert signals.log_signals(conn, w, "2026-07-16") == 0   # deduped
+        today = db.now_iso()[:10]     # dedupe key must match log timestamps
+        assert signals.log_signals(conn, w, today) == 2
+        assert signals.log_signals(conn, w, today) == 0   # deduped
         rules = db.alerts_df(conn)["rule"].tolist()
         assert rules.count("buy_level") == 2
         conn.close()

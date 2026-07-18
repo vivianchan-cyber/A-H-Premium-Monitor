@@ -95,11 +95,15 @@ def buy_watch(table: pd.DataFrame) -> pd.DataFrame:
             "Mkt cap H (HKD bn)": r["Mkt cap H (HKD bn)"],
             "Why flagged": "; ".join(hit["reasons"]),
         })
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values("H upside to 5y median (%)",
-                            ascending=False).reset_index(drop=True)
-    return df
+    if not rows:
+        return pd.DataFrame(columns=[
+            "Company", "Name (ZH)", "H Ticker", "A Ticker",
+            "Classification", "H Price (HKD)", "Premium calc (%)",
+            "5y median (pp)", "H upside to 5y median (%)", "5y percentile",
+            "H div yield (%)", "P/E (H)", "Mkt cap H (HKD bn)",
+            "Why flagged"])
+    return pd.DataFrame(rows).sort_values(
+        "H upside to 5y median (%)", ascending=False).reset_index(drop=True)
 
 
 def log_signals(conn, watch: pd.DataFrame, dedupe_date: str) -> int:
