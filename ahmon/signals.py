@@ -88,7 +88,7 @@ def buy_watch(table: pd.DataFrame) -> pd.DataFrame:
             "Classification": r["Classification"],
             "H Price (HKD)": r["H Price (HKD)"],
             "A Price (CNY)": r.get("A Price (CNY)"),
-            "FX (HKD per 1 CNY)": r.get("HKD/CNY"),
+            "FX (HKD per 1 CNY)": r.get("FX (HKD per 1 CNY)"),
             "Premium calc (%)": r["Premium calc (%)"],
             "5y median (pp)": r["5y median (pp)"],
             "H upside to 5y median (%)": round(hit["upside"], 1),

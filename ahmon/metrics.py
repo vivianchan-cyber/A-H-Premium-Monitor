@@ -19,7 +19,7 @@ def _series(g: pd.DataFrame, col: str) -> pd.Series:
 # (a fresh database must render an empty dashboard, never crash).
 MONITOR_COLUMNS = [
     "Company", "Name (ZH)", "Classification", "Sector", "H Ticker",
-    "A Ticker", "H Price (HKD)", "A Price (CNY)", "HKD/CNY",
+    "A Ticker", "H Price (HKD)", "A Price (CNY)", "FX (HKD per 1 CNY)",
     "Premium calc (%)", "Premium src (%)", "Calc-src diff (pp)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)",
     "Δ1y (pp)", "H 1d ret (%)", "A 1d ret (%)", "H div yield (%)",
@@ -34,6 +34,29 @@ MONITOR_COLUMNS = [
 ATTRIBUTION_COLUMNS = ["Company", "Classification", "Premium move (pp)",
                        "Driver", "A contribution (pp)",
                        "H contribution (pp)", "FX contribution (pp)"]
+
+
+# Columns the type-to-filter box searches when "All text columns" is on.
+TEXT_FILTER_COLUMNS = ["Company", "Name (ZH)", "H Ticker", "A Ticker",
+                       "Classification", "Sector"]
+
+
+def filter_table(df: pd.DataFrame, text: str,
+                 column: str | None = None) -> pd.DataFrame:
+    """Case-insensitive substring filter for the monitor tables. `column`
+    limits the match to one column; None/'All text columns' searches all
+    of TEXT_FILTER_COLUMNS. Empty text returns the frame unchanged."""
+    text = (text or "").strip()
+    if not text:
+        return df
+    cols = (TEXT_FILTER_COLUMNS if column in (None, "All text columns")
+            else [column])
+    cols = [c for c in cols if c in df.columns]
+    mask = pd.Series(False, index=df.index)
+    for c in cols:
+        mask |= df[c].astype(str).str.contains(text, case=False, na=False,
+                                               regex=False)
+    return df[mask]
 
 
 def format_change_pts(v) -> str:
@@ -83,7 +106,7 @@ def monitor_table(conn) -> pd.DataFrame:
             "Sector": c["sector"],
             "H Ticker": c["h_ticker"], "A Ticker": c["a_ticker"],
             "H Price (HKD)": last["h_close"], "A Price (CNY)": last["a_close"],
-            "HKD/CNY": last["fx"],
+            "FX (HKD per 1 CNY)": last["fx"],
             "Premium calc (%)": last["premium_calc"],
             "Premium src (%)": last["premium_src"],
             "Calc-src diff (pp)":

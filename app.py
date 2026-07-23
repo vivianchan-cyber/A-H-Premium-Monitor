@@ -229,7 +229,7 @@ with tabs[0]:
 # ------------------------------------------------------- 2 Stock Monitor
 DISPLAY_COLS = [
     "Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
-    "Sector", "H Price (HKD)", "A Price (CNY)", "HKD/CNY",
+    "Sector", "H Price (HKD)", "A Price (CNY)", "FX (HKD per 1 CNY)",
     "Premium calc (%)", "H discount to A (%)",
     "H upside to 5y median (%)", "Premium src (%)", "Calc-src diff (pp)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
@@ -244,8 +244,25 @@ DISPLAY_COLS = [
 
 TEXT_COLS = {"Company", "Name (ZH)", "Classification", "Sector", "H Ticker",
              "A Ticker", "Updated", "Quality"}
+
+PREMIUM_HELP = ("How much more the A share costs than the H share, "
+                "computed by this dashboard from the three columns to the "
+                "left:  (A price × HKD-per-CNY ÷ H price − 1) × 100.  "
+                "Example: (¥10.00 × 1.16 ÷ HK$5.80 − 1) × 100 = +100%.")
+FX_HELP = ("Exchange rate, direction matters: HK dollars per 1 yuan "
+           "(≈1.16, i.e. ¥1 ≈ HK$1.16). The A price is multiplied by this "
+           "to express it in HK dollars before comparing with the H price.")
+
 NUM_CONFIG = {c: st.column_config.NumberColumn(format="%.2f")
               for c in DISPLAY_COLS if c not in TEXT_COLS}
+NUM_CONFIG["Premium calc (%)"] = st.column_config.NumberColumn(
+    format="%.2f", help=PREMIUM_HELP)
+NUM_CONFIG["FX (HKD per 1 CNY)"] = st.column_config.NumberColumn(
+    format="%.3f", help=FX_HELP)
+NUM_CONFIG["H Price (HKD)"] = st.column_config.NumberColumn(
+    format="%.2f", help="Price of the Hong Kong (H) listing, in HK dollars.")
+NUM_CONFIG["A Price (CNY)"] = st.column_config.NumberColumn(
+    format="%.2f", help="Price of the mainland (A) listing, in yuan (CNY).")
 
 
 def show_table(t: pd.DataFrame):
@@ -319,19 +336,32 @@ with tabs[1]:
         "also recorded once per day in the Alerts tab. An admin can "
         "adjust these rules.")
     st.divider()
+    fc1, fc2 = st.columns([3, 1])
+    filter_text = fc1.text_input(
+        "🔎 Filter — type letters to narrow the tables below",
+        placeholder="e.g. bank · 601988 · 中国 · Financials",
+        key="monitor_filter")
+    filter_col = fc2.selectbox(
+        "in column", ["All text columns"] + metrics.TEXT_FILTER_COLUMNS,
+        key="monitor_filter_col")
+    ftable = metrics.filter_table(table, filter_text, filter_col)
+    if filter_text and len(ftable) < len(table):
+        st.caption(f"Showing {len(ftable)} of {len(table)} companies "
+                   f"matching “{filter_text}”. (The magnifier icon on any "
+                   "table also searches within it.)")
+
     groups = {
-        "Focus Holdings": table[table["Classification"] == config.FOCUS],
-        "Other Portfolio Holdings":
-            table[table["Classification"] == config.PORTFOLIO],
-        "Watchlist": table[table["Classification"] == config.WATCHLIST],
-        "Other A–H Stocks": table[table["Classification"] == config.OTHER],
-        "Full A–H Universe": table,
+        "Focus A-H Holdings":
+            ftable[ftable["Classification"] == config.FOCUS],
+        "Other A-H Stocks":
+            ftable[ftable["Classification"] != config.FOCUS],
+        "Full A-H Universe": ftable,
     }
     sub = st.tabs(list(groups))
     for stab, (name, t) in zip(sub, groups.items()):
         with stab:
             show_table(t.reset_index(drop=True))
-            if name == "Focus Holdings" and not t.empty:
+            if name == "Focus A-H Holdings" and not t.empty:
                 rest = table[table["Classification"] != config.FOCUS]
                 st.markdown("##### Rest of the A–H universe (summary)")
                 c1, c2, c3, c4 = st.columns(4)
@@ -347,6 +377,24 @@ with tabs[1]:
 
     st.divider()
     if IS_ADMIN:
+        st.markdown("##### Focus list")
+        st.caption("The Focus list is stored in the database and "
+                   "audit-logged. This button reconciles it against "
+                   "`config/focus_list.csv` (the standard 19 names): "
+                   "listed companies become Focus, current Focus members "
+                   "not on the list move to Other A-H Stock.")
+        if st.button("Apply standard Focus list"):
+            from ahmon.focus_list import apply_focus_list
+            res = apply_focus_list(conn,
+                                   source=f"focus_list:{user['email']}")
+            st.session_state["data_version"] += 1
+            st.success(f"Focus Holdings now {res['focus_size']} · "
+                       f"promoted {res['promoted'] or 'none'} · "
+                       f"demoted {res['demoted'] or 'none'}")
+            if res["missing_from_db"]:
+                st.warning(f"On the list but not in the database: "
+                           f"{res['missing_from_db']}")
+            st.rerun()
         st.markdown("##### Reclassify a company")
         c1, c2, c3 = st.columns([2, 2, 1])
         pick = c1.selectbox("Company", table["Company"].sort_values())
@@ -408,14 +456,13 @@ with tabs[2]:
 
 # ------------------------------------------------------------ 4 Rankings
 with tabs[3]:
+    # Same three groups as the Stock Monitor (always unfiltered here).
     rank_scopes = {
-        "Focus Holdings": groups["Focus Holdings"],
-        "All Portfolio Holdings (Focus + Other)":
-            table[table["Classification"].isin([config.FOCUS,
-                                                config.PORTFOLIO])],
-        "Watchlist": groups["Watchlist"],
-        "Other A–H Stocks": groups["Other A–H Stocks"],
-        "Full A–H Universe": table,
+        "Focus A-H Holdings":
+            table[table["Classification"] == config.FOCUS],
+        "Other A-H Stocks":
+            table[table["Classification"] != config.FOCUS],
+        "Full A-H Universe": table,
     }
     st.markdown(
         "**Read everything as H-share upside** (the H leg is the one a "
