@@ -87,6 +87,8 @@ def buy_watch(table: pd.DataFrame) -> pd.DataFrame:
             "H Ticker": r["H Ticker"], "A Ticker": r["A Ticker"],
             "Classification": r["Classification"],
             "H Price (HKD)": r["H Price (HKD)"],
+            "A Price (CNY)": r.get("A Price (CNY)"),
+            "FX (HKD per 1 CNY)": r.get("HKD/CNY"),
             "Premium calc (%)": r["Premium calc (%)"],
             "5y median (pp)": r["5y median (pp)"],
             "H upside to 5y median (%)": round(hit["upside"], 1),
@@ -99,7 +101,8 @@ def buy_watch(table: pd.DataFrame) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(columns=[
             "Company", "Name (ZH)", "H Ticker", "A Ticker",
-            "Classification", "H Price (HKD)", "Premium calc (%)",
+            "Classification", "H Price (HKD)", "A Price (CNY)",
+            "FX (HKD per 1 CNY)", "Premium calc (%)",
             "5y median (pp)", "H upside to 5y median (%)", "5y percentile",
             "H div yield (%)", "P/E (H)", "Mkt cap H (HKD bn)",
             "Why flagged"])

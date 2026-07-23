@@ -265,15 +265,42 @@ with tabs[1]:
         st.info("No company currently meets the buy-level screen "
                 "(thresholds in `ahmon/config.py`).")
     else:
+        watch_cols = [c for c in watch.columns if c != "Why flagged"]
         st.dataframe(
-            watch, hide_index=True, use_container_width=True,
+            watch[watch_cols], hide_index=True, use_container_width=True,
             height=min(420, 60 + 35 * len(watch)),
             column_config={
                 **{c: st.column_config.NumberColumn(format="%.2f")
-                   for c in watch.columns
+                   for c in watch_cols
                    if watch[c].dtype.kind in "fi"},
-                "Why flagged": st.column_config.TextColumn(width="large"),
+                "H Price (HKD)": st.column_config.NumberColumn(
+                    format="%.2f",
+                    help="Price of the Hong Kong (H) listing, in HK "
+                         "dollars."),
+                "A Price (CNY)": st.column_config.NumberColumn(
+                    format="%.2f",
+                    help="Price of the mainland (A) listing, in yuan "
+                         "(CNY)."),
+                "FX (HKD per 1 CNY)": st.column_config.NumberColumn(
+                    format="%.3f",
+                    help="Exchange rate, direction matters: this is HK "
+                         "dollars per 1 yuan (≈1.16, i.e. ¥1 ≈ "
+                         "HK$1.16). The A price is multiplied by this "
+                         "to express it in HK dollars before comparing "
+                         "with the H price."),
+                "Premium calc (%)": st.column_config.NumberColumn(
+                    format="%.2f",
+                    help="How much more the A share costs than the H "
+                         "share, computed by this dashboard from the "
+                         "three columns to the left:  "
+                         "(A price × HKD-per-CNY ÷ H price − 1) × 100.  "
+                         "Example: (¥10.00 × 1.16 ÷ HK$5.80 − 1) × 100 "
+                         "= +100%."),
             })
+        st.markdown("**Why each company is flagged:**")
+        for _, r in watch.iterrows():
+            st.markdown(f"- **{r['Company']}** ({r['H Ticker']} · "
+                        f"{r['Name (ZH)']}): {r['Why flagged']}")
     st.caption(
         "**How this list is built — automatic rules, not investment "
         "advice.** A company appears here only when all three are true: "

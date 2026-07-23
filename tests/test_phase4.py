@@ -57,7 +57,8 @@ def monitor_row(**over):
         "Company": "Test Bank", "Name (ZH)": "测试银行",
         "H Ticker": "1.HK", "A Ticker": "600000.SS",
         "Classification": config.FOCUS, "Quality": "live",
-        "H Price (HKD)": 5.0, "Premium calc (%)": 60.0,
+        "H Price (HKD)": 5.0, "A Price (CNY)": 6.9, "HKD/CNY": 1.16,
+        "Premium calc (%)": 60.0,
         "5y median (pp)": 30.0, "H upside to 5y median (%)": 23.1,
         "5y percentile": 92.0, "H div yield (%)": 6.0,
         "P/E (H)": 5.0, "Mkt cap H (HKD bn)": 200.0,
@@ -101,6 +102,12 @@ class TestBuySignals:
         w = signals.buy_watch(t)
         assert list(w["Company"]) == ["Bigger Upside", "Test Bank"]
         assert "Why flagged" in w.columns
+        # price context columns sit between H price and the premium
+        cols = list(w.columns)
+        assert cols.index("H Price (HKD)") < cols.index("A Price (CNY)") \
+            < cols.index("FX (HKD per 1 CNY)") \
+            < cols.index("Premium calc (%)")
+        assert w.iloc[0]["FX (HKD per 1 CNY)"] == 1.16
         today = db.now_iso()[:10]     # dedupe key must match log timestamps
         assert signals.log_signals(conn, w, today) == 2
         assert signals.log_signals(conn, w, today) == 0   # deduped
