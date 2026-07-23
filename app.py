@@ -205,8 +205,7 @@ with tabs[0]:
         for c, (lbl, k) in zip(cols[2:], [("1w", "1w"), ("1m", "1m"),
                                           ("3m", "3m"), ("YTD", "ytd"),
                                           ("1y", "1y")]):
-            v = ch[k]
-            c.metric(f"Δ {lbl}", "—" if v is None else f"{v:+.1f} pts")
+            c.metric(f"Δ {lbl}", metrics.format_change_pts(ch[k]))
         cols = st.columns(6)
         cols[0].metric("3y percentile", f"{r3['percentile']:.0f}%"
                        if r3["percentile"] is not None else "—")

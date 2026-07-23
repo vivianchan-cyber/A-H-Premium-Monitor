@@ -36,6 +36,17 @@ ATTRIBUTION_COLUMNS = ["Company", "Classification", "Premium move (pp)",
                        "H contribution (pp)", "FX contribution (pp)"]
 
 
+def format_change_pts(v) -> str:
+    """Metric-row formatter for index-point changes: missing -> '—', and a
+    change that rounds to zero displays as an unsigned '0.0 pts' (never
+    the ugly '-0.0 pts')."""
+    if v is None or pd.isna(v):
+        return "—"
+    if abs(v) < 0.05:
+        return "0.0 pts"
+    return f"{v:+.1f} pts"
+
+
 def monitor_table(conn) -> pd.DataFrame:
     """One row per company with every field the Stock Monitor displays."""
     comps = db.companies_df(conn)
