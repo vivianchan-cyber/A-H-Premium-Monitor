@@ -275,17 +275,22 @@ with tabs[1]:
                 "Why flagged": st.column_config.TextColumn(width="large"),
             })
     st.caption(
-        f"Rule-based screen, **not investment advice** — flags H shares "
-        f"whose premium is ≥{config.SIGNAL_MIN_5Y_PERCENTILE:.0f}th "
-        f"percentile of their own 5-year range with "
-        f"≥{config.SIGNAL_MIN_H_UPSIDE_PCT:.0f}% H upside on reversion to "
-        f"their 5y median, plus at least "
-        f"{config.SIGNAL_MIN_QUALITY_HITS} of: H yield "
-        f"≥{config.SIGNAL_MIN_H_DIV_YIELD:.0f}%, H P/E "
-        f"≤{config.SIGNAL_MAX_H_PE:.0f}×, H mkt cap "
-        f"≥{config.SIGNAL_MIN_H_MKTCAP_HKD/1e9:.0f}bn HKD. Signals are "
-        "only raised on live data, and each is logged once per day to "
-        "the Alerts tab. Thresholds are editable in `ahmon/config.py`.")
+        "**How this list is built — automatic rules, not investment "
+        "advice.** A company appears here only when all three are true: "
+        f"**(1)** its H share is unusually cheap next to its own A share "
+        f"— the price gap is in the widest "
+        f"{100 - config.SIGNAL_MIN_5Y_PERCENTILE:.0f}% of that company's "
+        f"last 5 years; **(2)** the H share would gain at least "
+        f"{config.SIGNAL_MIN_H_UPSIDE_PCT:.0f}% just from that gap going "
+        f"back to the company's own normal level; **(3)** it passes at "
+        f"least {config.SIGNAL_MIN_QUALITY_HITS} of 3 quality checks — "
+        f"dividend at least {config.SIGNAL_MIN_H_DIV_YIELD:.0f}%, price "
+        f"no more than {config.SIGNAL_MAX_H_PE:.0f}× yearly earnings, "
+        f"company worth at least "
+        f"HK${config.SIGNAL_MIN_H_MKTCAP_HKD / 1e9:.0f}bn. Companies "
+        "with out-of-date prices never appear. Every flagged name is "
+        "also recorded once per day in the Alerts tab. An admin can "
+        "adjust these rules.")
     st.divider()
     groups = {
         "Focus Holdings": table[table["Classification"] == config.FOCUS],

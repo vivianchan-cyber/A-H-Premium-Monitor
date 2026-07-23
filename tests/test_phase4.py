@@ -71,8 +71,9 @@ class TestBuySignals:
         hit = signals.evaluate_row(monitor_row())
         assert hit is not None and hit["quality_hits"] == 3
         text = " ".join(hit["reasons"])
-        assert "+23.1%" in text and "92th percentile" in text
-        assert "6.0% pays you to wait" in text
+        assert "cheaper vs its A share than on 92% of days" in text
+        assert "gains about +23%" in text
+        assert "pays a 6.0% dividend while you wait" in text
 
     def test_upside_and_percentile_are_required(self):
         assert signals.evaluate_row(

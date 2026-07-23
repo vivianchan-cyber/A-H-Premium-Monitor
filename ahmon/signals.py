@@ -44,25 +44,26 @@ def evaluate_row(r: pd.Series) -> dict | None:
         return None
 
     reasons = [
-        f"reversion to its own 5y median premium "
-        f"({r['5y median (pp)']:.0f}%, today {r['Premium calc (%)']:.0f}%) "
-        f"would lift the H share {upside:+.1f}%",
-        f"premium at the {pctile:.0f}th percentile of its 5-year range — "
-        "this wide a discount is rare for this name",
+        f"the H share is cheaper vs its A share than on {pctile:.0f}% of "
+        "days in the last 5 years",
+        f"if that gap returns to this company's normal level, the H share "
+        f"gains about {upside:+.0f}% (premium today {r['Premium calc (%)']:.0f}%, "
+        f"normally {r['5y median (pp)']:.0f}%)",
     ]
     hits = 0
     y = r.get("H div yield (%)")
     if pd.notna(y) and y >= config.SIGNAL_MIN_H_DIV_YIELD:
         hits += 1
-        reasons.append(f"H dividend yield {y:.1f}% pays you to wait")
+        reasons.append(f"pays a {y:.1f}% dividend while you wait")
     pe = r.get("P/E (H)")
     if pd.notna(pe) and 0 < pe <= config.SIGNAL_MAX_H_PE:
         hits += 1
-        reasons.append(f"H P/E {pe:.1f}× is cheap in absolute terms")
+        reasons.append(f"cheap on earnings too (P/E {pe:.1f})")
     mc = r.get("Mkt cap H (HKD bn)")
     if pd.notna(mc) and mc * 1e9 >= config.SIGNAL_MIN_H_MKTCAP_HKD:
         hits += 1
-        reasons.append(f"H market cap {_fmt_bn(mc * 1e9)} HKD — liquid")
+        reasons.append(f"big, easy-to-trade company "
+                       f"({_fmt_bn(mc * 1e9)} HKD)")
 
     if hits < config.SIGNAL_MIN_QUALITY_HITS:
         return None
