@@ -228,15 +228,20 @@ with tabs[0]:
                        else "Percentile",
                        f"{v['percentile']:.0f}%" if v["sufficient"]
                        else NO_HIST, help=PCTILE_HELP)
-        cols[3].metric("Historical relative valuation",
-                       status if status else NO_HIST, help=STATUS_HELP)
+        # tile shows the short form; the label + tooltip carry the full
+        # "relative to history" qualification
+        status_short = (status.replace(" relative to history", "")
+                        if status else NO_HIST)
+        cols[3].metric("Historical relative valuation", status_short,
+                       help=STATUS_HELP)
         cols[4].metric(f"Distance from {wl} median" if v["sufficient"]
                        else "Distance from median",
-                       (f"{v['diff_pts']:+.1f} pts ({v['diff_pct']:+.1f}%)"
+                       (metrics.format_change_pts(v["diff_pts"])
                         if v["sufficient"] else NO_HIST),
                        help="Current index level minus the median of the "
-                            "trailing window, in index points, with the "
-                            "same gap as a percentage of the median.")
+                            "trailing window, in index points. The same "
+                            "gap as a percentage of the median is in the "
+                            "context line below.")
 
         # ------- recent direction: three primary changes + the rest folded
         cc = st.columns([1, 1, 1, 2])
