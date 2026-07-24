@@ -314,7 +314,7 @@ DISPLAY_COLS = [
     "Sector", "H Price (HKD)", "H % change today",
     "A Price (CNY)", "A % change today", "FX (HKD per 1 CNY)",
     "Premium calc (%)", "H discount to A (%)",
-    "H upside to 5y median (%)", "Premium src (%)", "Calc-src diff (pp)",
+    "H upside to 5y median (%)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
     "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
     "H div yield (%)", "A div yield (%)", "P/E (H)", "P/E (A)",
@@ -335,36 +335,96 @@ FX_HELP = ("Exchange rate, direction matters: HK dollars per 1 yuan "
            "(≈1.16, i.e. ¥1 ≈ HK$1.16). The A price is multiplied by this "
            "to express it in HK dollars before comparing with the H price.")
 
-NUM_CONFIG = {c: st.column_config.NumberColumn(format="%.2f")
-              for c in DISPLAY_COLS if c not in TEXT_COLS}
-NUM_CONFIG["Premium calc (%)"] = st.column_config.NumberColumn(
-    format="%.2f", help=PREMIUM_HELP)
-NUM_CONFIG["FX (HKD per 1 CNY)"] = st.column_config.NumberColumn(
-    format="%.3f", help=FX_HELP)
-NUM_CONFIG["H Price (HKD)"] = st.column_config.NumberColumn(
-    format="%.2f", help="Price of the Hong Kong (H) listing, in HK dollars.")
-NUM_CONFIG["A Price (CNY)"] = st.column_config.NumberColumn(
-    format="%.2f", help="Price of the mainland (A) listing, in yuan (CNY).")
-NUM_CONFIG["H discount to A (%)"] = st.column_config.NumberColumn(
-    format="%.2f",
-    help="The same price gap as the premium, viewed from the H side: "
-         "how much less the H share costs than its A twin.  "
-         "(1 − H price ÷ (A price × HKD-per-CNY)) × 100.  "
-         "Example: a +100% premium means A costs 2× H, so H is 50% off. "
-         "Related by: discount = premium ÷ (100 + premium) × 100. "
-         "Note the premium is the industry's standard convention (HSAHP, "
-         "AASTOCKS, Eastmoney all quote premiums); the discount is the "
-         "shopper's view of the identical fact.")
-NUM_CONFIG["H % change today"] = st.column_config.NumberColumn(
-    format="%.2f",
-    help="Today's move of the H share: current price vs the previous "
-         "close, in %. Outside trading hours this is the last session's "
-         "full-day change.")
-NUM_CONFIG["A % change today"] = st.column_config.NumberColumn(
-    format="%.2f",
-    help="Today's move of the A share: current price vs the previous "
-         "close, in %. Outside trading hours this is the last session's "
-         "full-day change.")
+# Hover explanation for every column in the Stock Monitor tables.
+DAY_CHANGE_HELP = ("Today's move of the {leg} share: current price vs the "
+                   "previous close, in %. Outside trading hours this is "
+                   "the last session's full-day change.")
+COLUMN_HELP = {
+    "Company": "The company's English name.",
+    "Name (ZH)": "The company's Chinese name.",
+    "H Ticker": "Hong Kong stock code of the H share.",
+    "A Ticker": "Mainland stock code of the A share "
+                "(.SS = Shanghai, .SZ = Shenzhen).",
+    "Sector": "Dashboard sector grouping (editable by an admin).",
+    "H Price (HKD)": "Price of the Hong Kong (H) listing, in HK dollars.",
+    "A Price (CNY)": "Price of the mainland (A) listing, in yuan (CNY).",
+    "H % change today": DAY_CHANGE_HELP.format(leg="H"),
+    "A % change today": DAY_CHANGE_HELP.format(leg="A"),
+    "FX (HKD per 1 CNY)": FX_HELP,
+    "Premium calc (%)": PREMIUM_HELP,
+    "H discount to A (%)":
+        "The same price gap as the premium, viewed from the H side: how "
+        "much less the H share costs than its A twin.  "
+        "(1 − H price ÷ (A price × HKD-per-CNY)) × 100.  "
+        "Example: a +100% premium means A costs 2× H, so H is 50% off. "
+        "Related by: discount = premium ÷ (100 + premium) × 100. "
+        "Note the premium is the industry's standard convention (HSAHP, "
+        "AASTOCKS, Eastmoney all quote premiums); the discount is the "
+        "shopper's view of the identical fact.",
+    "H upside to 5y median (%)":
+        "What the H share would gain if today's premium merely went back "
+        "to this company's own 5-year median premium, holding the A price "
+        "and FX still: (1 + premium/100) ÷ (1 + median/100) − 1. The "
+        "conservative version of the convergence bet (full convergence "
+        "to the A price would return the premium itself).",
+    "Δ1d (pp)": "Change in the premium vs the previous trading day, in "
+                "percentage points.",
+    "Δ1w (pp)": "Change in the premium vs 5 trading days ago, in "
+                "percentage points.",
+    "Δ1m (pp)": "Change in the premium vs 21 trading days (≈1 month) "
+                "ago, in percentage points.",
+    "Δ3m (pp)": "Change in the premium vs 63 trading days (≈3 months) "
+                "ago, in percentage points.",
+    "ΔYTD (pp)": "Change in the premium since the final trading day of "
+                 "last year, in percentage points.",
+    "Δ1y (pp)": "Change in the premium vs 252 trading days (≈1 year) "
+                "ago, in percentage points.",
+    "Mkt cap H (HKD bn)": "Total market value priced off the H share, "
+                          "in billions of HK dollars.",
+    "Mkt cap A (CNY bn)": "Total market value priced off the A share, "
+                          "in billions of yuan.",
+    "H div yield (%)": "Dividend yield of the H share (last 12 months' "
+                       "dividends ÷ H price). Blank = no dividend or "
+                       "not reported.",
+    "A div yield (%)": "Dividend yield of the A share. Usually lower "
+                       "than the H yield by exactly the premium factor — "
+                       "same dividend, higher share price.",
+    "P/E (H)": "H price ÷ last-12-months earnings per share. Blank = "
+               "loss-making or not reported.",
+    "P/E (A)": "A price ÷ last-12-months earnings per share.",
+    "P/B (H)": "H price ÷ book value per share.",
+    "P/B (A)": "A price ÷ book value per share.",
+    "3y median (pp)": "This company's typical premium over the last 3 "
+                      "years (median of ~756 daily values).",
+    "5y median (pp)": "This company's typical premium over the last 5 "
+                      "years (median of ~1,260 daily values).",
+    "Dist from 3y median (pp)": "Today's premium minus the 3-year "
+                                "median: positive = wider than usual.",
+    "Dist from 5y median (pp)": "Today's premium minus the 5-year "
+                                "median: positive = wider than usual "
+                                "(more H-side reversion upside).",
+    "5y percentile": "Share of the last 5 years' days with a premium at "
+                     "or below today's. 90 = wider than on 90% of days "
+                     "(rare, H unusually cheap vs A); 10 = narrower than "
+                     "usual.",
+    "52w percentile": "Same idea over the last 52 weeks (252 trading "
+                      "days).",
+    "Updated": "When this row's data was last refreshed "
+               "(Asia/Singapore time).",
+    "Quality": "Data label: live = fresh feed · eod = historical daily "
+               "close · stale = older than the freshness threshold for "
+               "its tier · sample = synthetic demo data (never mixed "
+               "with live).",
+}
+
+NUM_CONFIG = {}
+for c in DISPLAY_COLS:
+    if c in TEXT_COLS:
+        NUM_CONFIG[c] = st.column_config.TextColumn(help=COLUMN_HELP.get(c))
+    else:
+        NUM_CONFIG[c] = st.column_config.NumberColumn(
+            format="%.3f" if c == "FX (HKD per 1 CNY)" else "%.2f",
+            help=COLUMN_HELP.get(c))
 
 
 def show_table(t: pd.DataFrame, key: str = "tbl"):
