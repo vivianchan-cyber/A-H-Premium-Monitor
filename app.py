@@ -216,9 +216,23 @@ with tabs[0]:
             ">90 very expensive). It is not a buy or sell "
             "recommendation. " + PCTILE_HELP)
 
+        def change_help(period_desc: str) -> str:
+            return (f"Index level now minus the level {period_desc}, in "
+                    "index points. Positive = the average A-share premium "
+                    "widened (A shares got more expensive relative to "
+                    "their H twins, i.e. the H discount grew); negative = "
+                    "the gap narrowed.")
+
         # ------- executive summary: five primary figures
         cols = st.columns(5)
-        cols[0].metric("HSAHP Index", f"{v['current']:.2f}")
+        cols[0].metric("HSAHP Index", f"{v['current']:.2f}",
+                       help="The Hang Seng Stock Connect China AH Premium "
+                            "Index: the size-weighted average price gap "
+                            "between the A and H shares of the largest "
+                            "dual-listed companies. 100 = A and H cost "
+                            "the same on average; above 100 = A shares "
+                            "cost more. Published once per day at the "
+                            "close.")
         cols[1].metric("Implied A-share premium",
                        f"{v['current'] - 100:.2f}%",
                        help="HSAHP Index − 100. The average extra price "
@@ -243,19 +257,20 @@ with tabs[0]:
                             "gap as a percentage of the median is in the "
                             "context line below.")
 
-        # ------- recent direction: three primary changes + the rest folded
-        cc = st.columns([1, 1, 1, 2])
-        cc[0].metric("Change over 1 month",
-                     metrics.format_change_pts(ch["1m"]))
-        cc[1].metric("Year-to-date", metrics.format_change_pts(ch["ytd"]))
-        cc[2].metric("Change over 1 year",
-                     metrics.format_change_pts(ch["1y"]))
-        with cc[3].expander("More periods"):
-            m1, m2 = st.columns(2)
-            m1.metric("Change over 1 week",
-                      metrics.format_change_pts(ch["1w"]))
-            m2.metric("Change over 3 months",
-                      metrics.format_change_pts(ch["3m"]))
+        # ------- recent direction, shortest to longest window
+        cc = st.columns(5)
+        for col, (label, key, desc) in zip(cc, [
+            ("Change over 1 week", "1w", "5 trading days ago"),
+            ("Change over 1 month", "1m", "21 trading days (≈1 month) ago"),
+            ("Change over 3 months", "3m",
+             "63 trading days (≈3 months) ago"),
+            ("Year-to-date", "ytd",
+             "at the final trading day of last year"),
+            ("Change over 1 year", "1y",
+             "252 trading days (≈1 year) ago"),
+        ]):
+            col.metric(label, metrics.format_change_pts(ch[key]),
+                       help=change_help(desc))
 
         # ------- historical context (secondary, quiet)
         ctx = []
