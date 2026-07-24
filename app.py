@@ -263,6 +263,16 @@ NUM_CONFIG["H Price (HKD)"] = st.column_config.NumberColumn(
     format="%.2f", help="Price of the Hong Kong (H) listing, in HK dollars.")
 NUM_CONFIG["A Price (CNY)"] = st.column_config.NumberColumn(
     format="%.2f", help="Price of the mainland (A) listing, in yuan (CNY).")
+NUM_CONFIG["H discount to A (%)"] = st.column_config.NumberColumn(
+    format="%.2f",
+    help="The same price gap as the premium, viewed from the H side: "
+         "how much less the H share costs than its A twin.  "
+         "(1 − H price ÷ (A price × HKD-per-CNY)) × 100.  "
+         "Example: a +100% premium means A costs 2× H, so H is 50% off. "
+         "Related by: discount = premium ÷ (100 + premium) × 100. "
+         "Note the premium is the industry's standard convention (HSAHP, "
+         "AASTOCKS, Eastmoney all quote premiums); the discount is the "
+         "shopper's view of the identical fact.")
 NUM_CONFIG["H % change today"] = st.column_config.NumberColumn(
     format="%.2f",
     help="Today's move of the H share: current price vs the previous "
