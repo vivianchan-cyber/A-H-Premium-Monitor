@@ -198,27 +198,101 @@ with tabs[0]:
         ch = calc.series_changes(hsahp)
         r3, r5 = (calc.rolling_stats(hsahp, w)
                   for w in (config.WINDOW_3Y, config.WINDOW_5Y))
-        cols = st.columns(7)
-        cols[0].metric("HSAHP level", f"{hsahp.iloc[-1]:.2f}")
-        cols[1].metric("Implied A premium", f"{hsahp.iloc[-1]-100:.1f}%",
-                       help="HSAHP − 100")
-        for c, (lbl, k) in zip(cols[2:], [("1w", "1w"), ("1m", "1m"),
-                                          ("3m", "3m"), ("YTD", "ytd"),
-                                          ("1y", "1y")]):
-            c.metric(f"Δ {lbl}", metrics.format_change_pts(ch[k]))
-        cols = st.columns(6)
-        cols[0].metric("3y percentile", f"{r3['percentile']:.0f}%"
-                       if r3["percentile"] is not None else "—")
-        cols[1].metric("5y percentile", f"{r5['percentile']:.0f}%"
-                       if r5["percentile"] is not None else "—")
-        cols[2].metric("3y high", f"{r3['high']:.1f}" if r3["high"] else "—")
-        cols[3].metric("3y low", f"{r3['low']:.1f}" if r3["low"] else "—")
-        cols[4].metric("5y high", f"{r5['high']:.1f}" if r5["high"] else "—")
-        cols[5].metric("5y low", f"{r5['low']:.1f}" if r5["low"] else "—")
+        v = metrics.hsahp_valuation(hsahp)
+        wl = v["window_label"] or "5-year"
+        status = metrics.valuation_status(v["percentile"])
+        NO_HIST = "Insufficient five-year history"
+        PCTILE_HELP = (
+            "A lower HSAHP percentile means the A-share premium over H "
+            "shares is smaller than during most of the historical period. "
+            "This can suggest that H shares are less deeply discounted "
+            "relative to A shares. It does not by itself mean that H "
+            "shares are cheap in absolute valuation terms.")
+        STATUS_HELP = (
+            "Historical relative valuation only — where today's premium "
+            "sits within the index's own history (percentile bands: "
+            "≤10 very attractive · ≤25 attractive · ≤50 moderately "
+            "attractive · ≤75 moderately expensive · ≤90 expensive · "
+            ">90 very expensive). It is not a buy or sell "
+            "recommendation. " + PCTILE_HELP)
+
+        # ------- executive summary: five primary figures
+        cols = st.columns(5)
+        cols[0].metric("HSAHP Index", f"{v['current']:.2f}")
+        cols[1].metric("Implied A-share premium",
+                       f"{v['current'] - 100:.1f}%",
+                       help="HSAHP Index − 100. The average extra price "
+                            "of the A share over the same company's "
+                            "H share, across the index constituents.")
+        cols[2].metric(f"{wl} percentile" if v["sufficient"]
+                       else "Percentile",
+                       f"{v['percentile']:.0f}%" if v["sufficient"]
+                       else NO_HIST, help=PCTILE_HELP)
+        cols[3].metric("Historical relative valuation",
+                       status if status else NO_HIST, help=STATUS_HELP)
+        cols[4].metric(f"Distance from {wl} median" if v["sufficient"]
+                       else "Distance from median",
+                       (f"{v['diff_pts']:+.1f} pts ({v['diff_pct']:+.1f}%)"
+                        if v["sufficient"] else NO_HIST),
+                       help="Current index level minus the median of the "
+                            "trailing window, in index points, with the "
+                            "same gap as a percentage of the median.")
+
+        # ------- recent direction: three primary changes + the rest folded
+        cc = st.columns([1, 1, 1, 2])
+        cc[0].metric("Change over 1 month",
+                     metrics.format_change_pts(ch["1m"]))
+        cc[1].metric("Year-to-date", metrics.format_change_pts(ch["ytd"]))
+        cc[2].metric("Change over 1 year",
+                     metrics.format_change_pts(ch["1y"]))
+        with cc[3].expander("More periods"):
+            m1, m2 = st.columns(2)
+            m1.metric("Change over 1 week",
+                      metrics.format_change_pts(ch["1w"]))
+            m2.metric("Change over 3 months",
+                      metrics.format_change_pts(ch["3m"]))
+
+        # ------- historical context (secondary, quiet)
+        ctx = []
+        if v["sufficient"]:
+            ctx.append(f"{wl} median **{v['median']:.2f}** · difference "
+                       f"**{v['diff_pts']:+.2f} points** "
+                       f"({v['diff_pct']:+.1f}%)")
+        if r3["high"] is not None:
+            ctx.append(f"3-year high {r3['high']:.1f} / low {r3['low']:.1f}")
+        if r5["high"] is not None:
+            ctx.append(f"5-year high {r5['high']:.1f} / low {r5['low']:.1f}")
+        if ctx:
+            st.caption(" · ".join(ctx))
+
+        # ------- rules-based interpretation (no inference, points only)
+        with st.container(border=True):
+            st.markdown("**Current position** — "
+                        + metrics.hsahp_interpretation(v, ch))
+
         rng = st.radio("Range", list(RANGE_KEYS), index=2, horizontal=True,
                        key="hsahp_rng")
         s = calc.resample_for_range(hsahp, RANGE_KEYS[rng])
-        st.plotly_chart(line_chart(s, "HSAHP"), use_container_width=True)
+        fig = line_chart(s, "HSAHP Index")
+        if v["sufficient"]:
+            fig.add_hline(y=v["median"],
+                          line=dict(color=INK["secondary"], width=2,
+                                    dash="dash"),
+                          annotation_text=f"{wl} median {v['median']:.1f}",
+                          annotation_position="top left",
+                          annotation_font_color=INK["secondary"])
+            if r5["high"] is not None:
+                for y_val, lbl, pos in ((r5["high"], "5-year high",
+                                         "top right"),
+                                        (r5["low"], "5-year low",
+                                         "bottom right")):
+                    fig.add_hline(y=y_val,
+                                  line=dict(color=INK["axis"], width=1,
+                                            dash="dot"),
+                                  annotation_text=f"{lbl} {y_val:.1f}",
+                                  annotation_position=pos,
+                                  annotation_font_color=INK["muted"])
+        st.plotly_chart(fig, use_container_width=True)
         health = db.source_health_df(conn)
         hs_row = health[health["source"].str.contains("HSAHP")]
         status = hs_row.iloc[0]["status"] if not hs_row.empty else "unknown"

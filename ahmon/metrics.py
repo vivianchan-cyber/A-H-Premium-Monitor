@@ -59,6 +59,97 @@ def filter_table(df: pd.DataFrame, text: str,
     return df[mask]
 
 
+# ---------------------------------------------- HSAHP valuation (overview)
+
+# Historical-relative-valuation bands over the 5-year percentile. This is
+# a description of where today sits within the index's own history — it
+# is deliberately NOT an investment recommendation.
+VALUATION_BANDS = [
+    (10.0, "Very attractive relative to history"),
+    (25.0, "Attractive relative to history"),
+    (50.0, "Moderately attractive"),
+    (75.0, "Moderately expensive"),
+    (90.0, "Expensive relative to history"),
+    (float("inf"), "Very expensive relative to history"),
+]
+
+
+def valuation_status(percentile) -> str | None:
+    """Map a 5-year percentile (0–100) onto the descriptive band; each
+    band's upper bound is inclusive (10.0 -> 'Very attractive', 10.01 ->
+    'Attractive'). None in, None out."""
+    if percentile is None or pd.isna(percentile):
+        return None
+    for upper, label in VALUATION_BANDS:
+        if percentile <= upper:
+            return label
+    return None      # unreachable
+
+
+def hsahp_valuation(series: pd.Series,
+                    window: int = config.WINDOW_5Y,
+                    min_obs: int = config.WINDOW_1Y) -> dict:
+    """Current level vs the trailing window's median/percentile, with
+    honest labelling when history is short:
+    - >= `window` observations: full stats, window_label '5-year';
+    - >= `min_obs` but < `window`: stats over what exists, window_label
+      'available N.N-year' so nothing is mislabelled as 5-year;
+    - < `min_obs`: sufficient=False and no statistics at all."""
+    s = series.dropna()
+    n = len(s)
+    out = {"n_obs": n, "current": float(s.iloc[-1]) if n else None,
+           "sufficient": False, "full_window": False, "window_label": None,
+           "median": None, "diff_pts": None, "diff_pct": None,
+           "percentile": None}
+    if n < min_obs:
+        return out
+    tail = s.iloc[-window:]
+    current = float(s.iloc[-1])
+    median = float(tail.median())
+    out.update({
+        "sufficient": True,
+        "full_window": n >= window,
+        "window_label": ("5-year" if n >= window
+                         else f"available {n / 252:.1f}-year"),
+        "median": median,
+        "diff_pts": current - median,
+        "diff_pct": (current / median - 1.0) * 100.0,
+        "percentile": float((tail <= current).mean() * 100.0),
+    })
+    return out
+
+
+def hsahp_interpretation(v: dict, changes: dict) -> str:
+    """Deterministic, rules-based interpretation sentence(s) built purely
+    from the calculated figures — no inference, no flow claims. Index
+    changes are always expressed in points."""
+    cur = v["current"]
+    parts = [f"The HSAHP Index is {cur:.2f}, implying an average A-share "
+             f"premium of {cur - 100:.1f}%."]
+    if v["sufficient"]:
+        d = v["diff_pts"]
+        rel = ("essentially at" if abs(d) < 0.05
+               else f"{abs(d):.1f} points {'below' if d < 0 else 'above'}")
+        parts.append(
+            f"It is in the {v['percentile']:.0f}th percentile of its "
+            f"{v['window_label']} history and sits {rel} its "
+            f"{v['window_label']} median of {v['median']:.2f}.")
+    d1m, d1y = changes.get("1m"), changes.get("1y")
+    if d1m is not None:
+        direction = ("widened" if d1m > 0.05
+                     else "narrowed" if d1m < -0.05 else "been little changed")
+        amt = "" if abs(d1m) <= 0.05 else f" by {abs(d1m):.1f} points"
+        tail = ""
+        if d1y is not None:
+            pos = ("close to" if abs(d1y) < 0.05 else
+                   f"{abs(d1y):.1f} points "
+                   f"{'below' if d1y < 0 else 'above'}")
+            tail = (f", and the index is {pos} its level one year ago")
+        parts.append(f"The premium has {direction}{amt} over the past "
+                     f"month{tail}.")
+    return " ".join(parts)
+
+
 def table_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "data") -> bytes:
     """Render a display table as a real Excel workbook (.xlsx) for the
     per-table download buttons (Streamlit's built-in export is CSV-only).
