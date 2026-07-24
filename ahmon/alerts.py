@@ -38,10 +38,10 @@ def evaluate(conn, table: pd.DataFrame,
             fire("monthly_premium_move", name,
                  f"1-month premium move {r['Δ1m (pp)']:+.1f}pp "
                  f"(threshold ±{config.ALERT_MONTHLY_PREMIUM_MOVE_PP:.0f}pp)")
-        if r["H 1d ret (%)"] is not None and \
-                abs(r["H 1d ret (%)"]) > config.ALERT_H_PRICE_MOVE_PCT:
+        if r["H % change today"] is not None and \
+                abs(r["H % change today"]) > config.ALERT_H_PRICE_MOVE_PCT:
             fire("h_price_move", name,
-                 f"H-share 1-day move {r['H 1d ret (%)']:+.1f}% "
+                 f"H-share 1-day move {r['H % change today']:+.1f}% "
                  f"(threshold ±{config.ALERT_H_PRICE_MOVE_PCT:.0f}%)")
         if r["52w percentile"] is not None:
             if r["52w percentile"] >= 98:

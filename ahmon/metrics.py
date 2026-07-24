@@ -22,7 +22,7 @@ MONITOR_COLUMNS = [
     "A Ticker", "H Price (HKD)", "A Price (CNY)", "FX (HKD per 1 CNY)",
     "Premium calc (%)", "Premium src (%)", "Calc-src diff (pp)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)",
-    "Δ1y (pp)", "H 1d ret (%)", "A 1d ret (%)", "H div yield (%)",
+    "Δ1y (pp)", "H % change today", "A % change today", "H div yield (%)",
     "A div yield (%)", "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
     "P/E (H)", "P/E (A)", "P/B (H)", "P/B (A)", "3y median (pp)",
     "5y median (pp)", "Dist from 3y median (pp)",
@@ -57,6 +57,17 @@ def filter_table(df: pd.DataFrame, text: str,
         mask |= df[c].astype(str).str.contains(text, case=False, na=False,
                                                regex=False)
     return df[mask]
+
+
+def table_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "data") -> bytes:
+    """Render a display table as a real Excel workbook (.xlsx) for the
+    per-table download buttons (Streamlit's built-in export is CSV-only).
+    Sheet names are capped at Excel's 31-character limit."""
+    import io
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+        df.to_excel(xw, index=False, sheet_name=(sheet or "data")[:31])
+    return buf.getvalue()
 
 
 def format_change_pts(v) -> str:
@@ -114,8 +125,8 @@ def monitor_table(conn) -> pd.DataFrame:
                 else last["premium_calc"] - last["premium_src"],
             "Δ1d (pp)": ch["1d"], "Δ1w (pp)": ch["1w"], "Δ1m (pp)": ch["1m"],
             "Δ3m (pp)": ch["3m"], "ΔYTD (pp)": ch["ytd"], "Δ1y (pp)": ch["1y"],
-            "H 1d ret (%)": calc.pct_return(h),
-            "A 1d ret (%)": calc.pct_return(a),
+            "H % change today": calc.pct_return(h),
+            "A % change today": calc.pct_return(a),
             "H div yield (%)": (last["h_div_yield"]
                                 if last["h_div_yield"] is not None
                                 else st.get("h_div_yield")),
@@ -192,7 +203,7 @@ RANKINGS = {
 
 def rankings(table: pd.DataFrame, key: str, n: int = 10) -> pd.DataFrame:
     t = table.copy()
-    t["H-A 1d spread (%)"] = t["H 1d ret (%)"] - t["A 1d ret (%)"]
+    t["H-A 1d spread (%)"] = t["H % change today"] - t["A % change today"]
     col, ascending = RANKINGS[key]
     if ascending is None:                       # by absolute deviation
         t = t.reindex(t[col].abs().sort_values(ascending=False).index)

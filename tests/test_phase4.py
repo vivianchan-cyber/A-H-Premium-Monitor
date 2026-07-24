@@ -124,7 +124,7 @@ class TestAlertDedupe:
         conn = db.connect(tmp_path / "t.db")
         t = pd.DataFrame([{
             "Company": "Co", "Δ1d (pp)": 9.0, "Δ1m (pp)": None,
-            "H 1d ret (%)": None, "52w percentile": None,
+            "H % change today": None, "52w percentile": None,
             "Premium z (1y)": None, "Calc-src diff (pp)": None,
             "Quality": "live", "Updated": "t",
         }])

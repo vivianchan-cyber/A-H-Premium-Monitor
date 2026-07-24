@@ -12,6 +12,7 @@ pytest>=8.0
 requests>=2.31          # Yahoo v8 chart API (quotes + CNYHKD=X FX)
 akshare>=1.14           # A–H universe, spot prices, source premium (Eastmoney)
 tabulate>=0.8.6         # akshare runtime dep + markdown validation tables
+openpyxl>=3.1           # Excel (.xlsx) table downloads (also akshare dep)
 # yfinance>=0.2         # NOT used: cookie/crumb bootstrap is rate-limited and
 #                       # its TLS impersonation fails behind egress proxies;
 #                       # ahmon/sources/yahoo.py calls the chart API directly.

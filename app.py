@@ -228,12 +228,12 @@ with tabs[0]:
 
 # ------------------------------------------------------- 2 Stock Monitor
 DISPLAY_COLS = [
-    "Company", "Name (ZH)", "H Ticker", "A Ticker", "Classification",
-    "Sector", "H Price (HKD)", "A Price (CNY)", "FX (HKD per 1 CNY)",
+    "Company", "Name (ZH)", "H Ticker", "A Ticker",
+    "Sector", "H Price (HKD)", "H % change today",
+    "A Price (CNY)", "A % change today", "FX (HKD per 1 CNY)",
     "Premium calc (%)", "H discount to A (%)",
     "H upside to 5y median (%)", "Premium src (%)", "Calc-src diff (pp)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
-    "H 1d ret (%)", "A 1d ret (%)",
     "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
     "H div yield (%)", "A div yield (%)", "P/E (H)", "P/E (A)",
     "P/B (H)", "P/B (A)", "3y median (pp)",
@@ -263,16 +263,34 @@ NUM_CONFIG["H Price (HKD)"] = st.column_config.NumberColumn(
     format="%.2f", help="Price of the Hong Kong (H) listing, in HK dollars.")
 NUM_CONFIG["A Price (CNY)"] = st.column_config.NumberColumn(
     format="%.2f", help="Price of the mainland (A) listing, in yuan (CNY).")
+NUM_CONFIG["H % change today"] = st.column_config.NumberColumn(
+    format="%.2f",
+    help="Today's move of the H share: current price vs the previous "
+         "close, in %. Outside trading hours this is the last session's "
+         "full-day change.")
+NUM_CONFIG["A % change today"] = st.column_config.NumberColumn(
+    format="%.2f",
+    help="Today's move of the A share: current price vs the previous "
+         "close, in %. Outside trading hours this is the last session's "
+         "full-day change.")
 
 
-def show_table(t: pd.DataFrame):
+def show_table(t: pd.DataFrame, key: str = "tbl"):
     if t.empty:
         st.info("No companies in this group.")
         return
     st.dataframe(t[DISPLAY_COLS], column_config=NUM_CONFIG,
                  use_container_width=True,
                  height=min(560, 60 + 35 * len(t)), hide_index=True)
-    st.caption("Click any column header to sort (click again to reverse).")
+    c1, c2 = st.columns([1, 3])
+    c1.download_button(
+        "⬇️ Download Excel (.xlsx)",
+        data=metrics.table_to_xlsx_bytes(t[DISPLAY_COLS], sheet=key),
+        file_name=f"ahmon_{key}_{datetime.now(config.TZ):%Y%m%d}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument."
+             "spreadsheetml.sheet",
+        key=f"xlsx_{key}")
+    c2.caption("Click any column header to sort (click again to reverse).")
 
 
 with tabs[1]:
@@ -360,7 +378,8 @@ with tabs[1]:
     sub = st.tabs(list(groups))
     for stab, (name, t) in zip(sub, groups.items()):
         with stab:
-            show_table(t.reset_index(drop=True))
+            show_table(t.reset_index(drop=True),
+                       key=name.replace(" ", "_").lower())
             if name == "Focus A-H Holdings" and not t.empty:
                 rest = table[table["Classification"] != config.FOCUS]
                 st.markdown("##### Rest of the A–H universe (summary)")
