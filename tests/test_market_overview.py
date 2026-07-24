@@ -91,17 +91,17 @@ class TestInterpretation:
         text = metrics.hsahp_interpretation(
             self.make(), {"1m": 2.0, "1y": -0.8})
         assert "The HSAHP Index is 123.44" in text
-        assert "average A-share premium of 23.4%" in text
+        assert "average A-share premium of 23.44%" in text
         assert "17th percentile of its 5-year history" in text
-        assert "8.7 points below its 5-year median of 132.10" in text
-        assert "widened by 2.0 points over the past month" in text
-        assert "0.8 points below its level one year ago" in text
-        assert "%" not in text.split("premium of 23.4%")[1]  # changes in pts
+        assert "8.66 points below its 5-year median of 132.10" in text
+        assert "widened by 2.00 points over the past month" in text
+        assert "0.80 points below its level one year ago" in text
+        assert "%" not in text.split("premium of 23.44%")[1]  # changes in pts
 
     def test_narrowing_and_missing_year(self):
         text = metrics.hsahp_interpretation(
             self.make(), {"1m": -3.2, "1y": None})
-        assert "narrowed by 3.2 points" in text
+        assert "narrowed by 3.20 points" in text
         assert "one year ago" not in text
 
     def test_insufficient_history_stays_silent_on_percentile(self):

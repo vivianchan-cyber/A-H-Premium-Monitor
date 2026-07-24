@@ -220,13 +220,13 @@ with tabs[0]:
         cols = st.columns(5)
         cols[0].metric("HSAHP Index", f"{v['current']:.2f}")
         cols[1].metric("Implied A-share premium",
-                       f"{v['current'] - 100:.1f}%",
+                       f"{v['current'] - 100:.2f}%",
                        help="HSAHP Index − 100. The average extra price "
                             "of the A share over the same company's "
                             "H share, across the index constituents.")
         cols[2].metric(f"{wl} percentile" if v["sufficient"]
                        else "Percentile",
-                       f"{v['percentile']:.0f}%" if v["sufficient"]
+                       f"{v['percentile']:.2f}%" if v["sufficient"]
                        else NO_HIST, help=PCTILE_HELP)
         # tile shows the short form; the label + tooltip carry the full
         # "relative to history" qualification
@@ -262,11 +262,11 @@ with tabs[0]:
         if v["sufficient"]:
             ctx.append(f"{wl} median **{v['median']:.2f}** · difference "
                        f"**{v['diff_pts']:+.2f} points** "
-                       f"({v['diff_pct']:+.1f}%)")
+                       f"({v['diff_pct']:+.2f}%)")
         if r3["high"] is not None:
-            ctx.append(f"3-year high {r3['high']:.1f} / low {r3['low']:.1f}")
+            ctx.append(f"3-year high {r3['high']:.2f} / low {r3['low']:.2f}")
         if r5["high"] is not None:
-            ctx.append(f"5-year high {r5['high']:.1f} / low {r5['low']:.1f}")
+            ctx.append(f"5-year high {r5['high']:.2f} / low {r5['low']:.2f}")
         if ctx:
             st.caption(" · ".join(ctx))
 
@@ -283,7 +283,7 @@ with tabs[0]:
             fig.add_hline(y=v["median"],
                           line=dict(color=INK["secondary"], width=2,
                                     dash="dash"),
-                          annotation_text=f"{wl} median {v['median']:.1f}",
+                          annotation_text=f"{wl} median {v['median']:.2f}",
                           annotation_position="top left",
                           annotation_font_color=INK["secondary"])
             if r5["high"] is not None:
@@ -294,7 +294,7 @@ with tabs[0]:
                     fig.add_hline(y=y_val,
                                   line=dict(color=INK["axis"], width=1,
                                             dash="dot"),
-                                  annotation_text=f"{lbl} {y_val:.1f}",
+                                  annotation_text=f"{lbl} {y_val:.2f}",
                                   annotation_position=pos,
                                   annotation_font_color=INK["muted"])
         st.plotly_chart(fig, use_container_width=True)
@@ -303,7 +303,10 @@ with tabs[0]:
         status = hs_row.iloc[0]["status"] if not hs_row.empty else "unknown"
         st.caption(f"Latest observation: {hsahp.index[-1]:%Y-%m-%d} · "
                    f"source status: **{status}** · daily EOD series "
-                   f"(index publishes once per day — no intraday values).")
+                   f"(index publishes once per day — no intraday values). "
+                   "Reference lines use daily closes; the 1y/3y/5y/Max "
+                   "views plot week- or month-end closes, so daily "
+                   "extremes can sit beyond the plotted line.")
 
 # ------------------------------------------------------- 2 Stock Monitor
 DISPLAY_COLS = [

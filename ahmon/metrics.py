@@ -125,11 +125,11 @@ def hsahp_interpretation(v: dict, changes: dict) -> str:
     changes are always expressed in points."""
     cur = v["current"]
     parts = [f"The HSAHP Index is {cur:.2f}, implying an average A-share "
-             f"premium of {cur - 100:.1f}%."]
+             f"premium of {cur - 100:.2f}%."]
     if v["sufficient"]:
         d = v["diff_pts"]
         rel = ("essentially at" if abs(d) < 0.05
-               else f"{abs(d):.1f} points {'below' if d < 0 else 'above'}")
+               else f"{abs(d):.2f} points {'below' if d < 0 else 'above'}")
         parts.append(
             f"It is in the {v['percentile']:.0f}th percentile of its "
             f"{v['window_label']} history and sits {rel} its "
@@ -138,11 +138,11 @@ def hsahp_interpretation(v: dict, changes: dict) -> str:
     if d1m is not None:
         direction = ("widened" if d1m > 0.05
                      else "narrowed" if d1m < -0.05 else "been little changed")
-        amt = "" if abs(d1m) <= 0.05 else f" by {abs(d1m):.1f} points"
+        amt = "" if abs(d1m) <= 0.05 else f" by {abs(d1m):.2f} points"
         tail = ""
         if d1y is not None:
             pos = ("close to" if abs(d1y) < 0.05 else
-                   f"{abs(d1y):.1f} points "
+                   f"{abs(d1y):.2f} points "
                    f"{'below' if d1y < 0 else 'above'}")
             tail = (f", and the index is {pos} its level one year ago")
         parts.append(f"The premium has {direction}{amt} over the past "
@@ -163,13 +163,13 @@ def table_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "data") -> bytes:
 
 def format_change_pts(v) -> str:
     """Metric-row formatter for index-point changes: missing -> '—', and a
-    change that rounds to zero displays as an unsigned '0.0 pts' (never
-    the ugly '-0.0 pts')."""
+    change that rounds to zero displays as an unsigned '0.00 pts' (never
+    the ugly '-0.00 pts'). Two decimals throughout (owner preference)."""
     if v is None or pd.isna(v):
         return "—"
-    if abs(v) < 0.05:
-        return "0.0 pts"
-    return f"{v:+.1f} pts"
+    if abs(v) < 0.005:
+        return "0.00 pts"
+    return f"{v:+.2f} pts"
 
 
 def monitor_table(conn) -> pd.DataFrame:
