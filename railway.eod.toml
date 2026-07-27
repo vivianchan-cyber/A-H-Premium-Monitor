@@ -1,0 +1,10 @@
+# Railway configuration for the optional end-of-day cron service
+# (post-close snapshot + stored commentary). Same reason to exist as
+# railway.cron.toml: config-as-code overrides dashboard settings, so this
+# service must not inherit the web service's railway.toml.
+#   service → Settings → Config-as-code → path: railway.eod.toml
+#   dashboard Cron Schedule: 20 8 * * 1-5   (08:20 UTC = 16:20 HK)
+
+[deploy]
+startCommand = "python -m ahmon.cron_refresh --eod --force"
+restartPolicyType = "NEVER"

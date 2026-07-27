@@ -1,6 +1,11 @@
 # Railway configuration for the web (dashboard) service.
 # Build: Nixpacks auto-detects Python from requirements.txt.
-# The cron service uses its own start command — see DEPLOYMENT.md.
+#
+# CAUTION: config-as-code overrides dashboard settings, and every service
+# connected to this repo reads THIS file unless its Settings →
+# Config-as-code path says otherwise. The cron services must point at
+# railway.cron.toml / railway.eod.toml, or they will boot the Streamlit
+# dashboard instead of the refresh script (see DEPLOYMENT.md §6).
 
 [deploy]
 startCommand = "streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"

@@ -99,16 +99,24 @@ Health-tab backfill button instead (or run
    again** (this becomes a second service; rename it to `cron-refresh`
    via its Settings → Service Name).
 2. `cron-refresh` service → **Settings**:
-   - **Start Command**: `python -m ahmon.cron_refresh`
-   - **Cron Schedule**: `*/5 * * * *`
-     (Railway crons run in **UTC**; the command itself checks HK/SSE
-     market hours and exits instantly when closed, so every-5-minutes
-     is safe and nearly free outside trading hours.)
+   - **Config-as-code** → file path: `railway.cron.toml`
+     ⚠️ **This step is mandatory.** Config-as-code overrides dashboard
+     settings, and by default every service reads the repo-root
+     `railway.toml` — the *web* service's config — so without this the
+     cron service boots the Streamlit dashboard instead of the refresh
+     script. `railway.cron.toml` carries the correct start command
+     (`python -m ahmon.cron_refresh`).
+   - **Cron Schedule**: `*/15 1-8 * * 1-5`
+     (Railway crons run in **UTC**: this is every 15 minutes,
+     09:00–16:59 HK, Mon–Fri. The command also checks the HK/SSE
+     trading calendar itself and exits instantly when closed, so
+     holidays and the lunch break are handled automatically.)
 3. `cron-refresh` → **Variables** → Add Reference →
    `Postgres.DATABASE_URL` (same as step 3; no AHMON_USERS needed).
 4. Optional but recommended, a second cron service for the post-close
    snapshot + commentary:
-   - Start Command: `python -m ahmon.cron_refresh --eod --force`
+   - Config-as-code file path: `railway.eod.toml` (start command
+     `python -m ahmon.cron_refresh --eod --force`)
    - Cron Schedule: `20 8 * * 1-5`  (08:20 UTC = 16:20 HK time)
 5. Only-one-writer guarantee: every cron run takes a PostgreSQL
    advisory lock before writing; an overlapping run logs
@@ -161,12 +169,17 @@ the Deployments tab.
 
 ## Reference: services, commands, variables
 
-| Service | Start command | Cron | Variables |
+| Service | Config file (start command) | Cron | Variables |
 |---|---|---|---|
-| web (dashboard) | `streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true` (from `railway.toml`) | — | `DATABASE_URL` (reference), `AHMON_USERS` |
-| cron-refresh | `python -m ahmon.cron_refresh` | `*/5 * * * *` | `DATABASE_URL` (reference) |
-| cron-eod (optional) | `python -m ahmon.cron_refresh --eod --force` | `20 8 * * 1-5` (UTC) | `DATABASE_URL` (reference) |
+| web (dashboard) | `railway.toml` — `streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true` | — | `DATABASE_URL` (reference), `AHMON_USERS` |
+| cron-refresh | `railway.cron.toml` — `python -m ahmon.cron_refresh` | `*/15 1-8 * * 1-5` (UTC) | `DATABASE_URL` (reference) |
+| cron-eod (optional) | `railway.eod.toml` — `python -m ahmon.cron_refresh --eod --force` | `20 8 * * 1-5` (UTC) | `DATABASE_URL` (reference) |
 | Postgres | managed by Railway | — | managed |
+
+Each service's config file is set under its **Settings → Config-as-code**;
+a service left on the default reads the web service's `railway.toml`, and
+config-as-code **overrides** dashboard settings — which would silently
+replace a cron start command with the Streamlit one.
 
 Build command: none needed — Nixpacks runs
 `pip install -r requirements.txt` automatically.

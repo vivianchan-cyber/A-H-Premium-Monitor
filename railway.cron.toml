@@ -1,0 +1,16 @@
+# Railway configuration for the scheduled-refresh cron service.
+#
+# Railway config-as-code OVERRIDES a service's dashboard settings, and the
+# repo-root railway.toml belongs to the web service — a cron service left
+# on the default config file would boot the Streamlit dashboard instead of
+# the refresh script. Point the cron service at this file:
+#   service → Settings → Config-as-code → path: railway.cron.toml
+#
+# The cron schedule stays in the dashboard (Settings → Cron Schedule);
+# recommended: */15 1-8 * * 1-5  (UTC == every 15 min, 09:00–16:59 HK,
+# Mon–Fri). The command also checks the trading calendar itself, so
+# holidays and the lunch break are handled either way.
+
+[deploy]
+startCommand = "python -m ahmon.cron_refresh"
+restartPolicyType = "NEVER"   # a failed run is simply retried at the next tick
