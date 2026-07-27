@@ -68,11 +68,13 @@ def get_conn():
     return db.connect(config.DB_PATH)
 
 
-@st.cache_data(show_spinner="Computing monitor table…")
+@st.cache_data(ttl=300, show_spinner="Computing monitor table…")
 def load(version: int):
     """Heavy per-company metrics, cached per data version: widget
     interactions rerun the script but reuse this result; refreshes and
-    imports bump st.session_state['data_version'] to force a recompute."""
+    imports bump st.session_state['data_version'] to force a recompute.
+    The 5-minute ttl bounds staleness when data changes outside the app
+    (the cron refresh service writes to the shared database directly)."""
     conn = get_conn()
     table = metrics.monitor_table(conn)
     att = metrics.attribution_table(conn, table)
