@@ -28,7 +28,8 @@ SECTOR_COLOR = {s: SERIES[i % 8] for i, s in enumerate(config.SECTORS)}
 def styled(fig: go.Figure, height=380) -> go.Figure:
     fig.update_layout(
         height=height, plot_bgcolor=INK["surface"], paper_bgcolor=INK["surface"],
-        font=dict(family="system-ui, sans-serif", color=INK["secondary"], size=12),
+        font=dict(family="system-ui, sans-serif", color=INK["secondary"],
+                  size=14),
         margin=dict(l=10, r=10, t=36, b=10),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
@@ -439,7 +440,10 @@ COLUMN_HELP = {
 NUM_CONFIG = {}
 for c in DISPLAY_COLS:
     if c in TEXT_COLS:
-        NUM_CONFIG[c] = st.column_config.TextColumn(help=COLUMN_HELP.get(c))
+        NUM_CONFIG[c] = st.column_config.TextColumn(
+            help=COLUMN_HELP.get(c),
+            # widest sector name ("Mining & Materials") must not truncate
+            width=170 if c == "Sector" else None)
     else:
         NUM_CONFIG[c] = st.column_config.NumberColumn(
             format="%.3f" if c == "FX (HKD per 1 CNY)" else "%.2f",
@@ -463,8 +467,8 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
         return
     st.dataframe(t[DISPLAY_COLS].style.map(sector_css, subset=["Sector"]),
                  column_config=NUM_CONFIG,
-                 use_container_width=True,
-                 height=min(560, 60 + 35 * len(t)), hide_index=True)
+                 use_container_width=True, row_height=40,
+                 height=min(620, 70 + 40 * len(t)), hide_index=True)
     c1, c2 = st.columns([1, 3])
     c1.download_button(
         "⬇️ Download Excel (.xlsx)",
