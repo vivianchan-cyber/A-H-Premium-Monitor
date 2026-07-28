@@ -563,17 +563,33 @@ with tabs[0]:
                    f"matching “{filter_text}”. (The magnifier icon on any "
                    "table also searches within it.)")
 
-    def by_sector(t: pd.DataFrame) -> pd.DataFrame:
-        # grouped view: sectors together (config.SECTORS order), then A→Z
+    def by_sector(t: pd.DataFrame,
+                  ticker_rank: dict | None = None) -> pd.DataFrame:
+        # grouped view: sectors together (config.SECTORS order); within a
+        # sector, rows follow ticker_rank if given (the owner's list
+        # order), otherwise company name A→Z
         order = {s: i for i, s in enumerate(config.SECTORS)}
-        return t.sort_values(
-            ["Sector", "Company"],
-            key=lambda col: col.map(order).fillna(99)
-            if col.name == "Sector" else col)
+
+        def key(col):
+            if col.name == "Sector":
+                return col.map(order).fillna(99)
+            if col.name == "H Ticker" and ticker_rank is not None:
+                return col.map(ticker_rank).fillna(9999)
+            return col
+
+        cols = ["Sector",
+                "H Ticker" if ticker_rank is not None else "Company"]
+        return t.sort_values(cols, key=key)
+
+    # Focus rows keep the order of config/focus_list.csv within their
+    # sector, so the owner controls row order by editing the list.
+    focus_rank = {t: i for i, t in enumerate(
+        pd.read_csv(config.CONFIG_DIR / "focus_list.csv")["h_ticker"])}
 
     groups = {
         "Focus A-H Holdings":
-            by_sector(ftable[ftable["Classification"] == config.FOCUS]),
+            by_sector(ftable[ftable["Classification"] == config.FOCUS],
+                      focus_rank),
         "Other A-H Stocks":
             by_sector(ftable[ftable["Classification"] != config.FOCUS]),
         "Full A-H Universe": ftable,
