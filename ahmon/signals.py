@@ -89,9 +89,10 @@ def buy_watch(table: pd.DataFrame) -> pd.DataFrame:
             "H Price (HKD)": r["H Price (HKD)"],
             "A Price (CNY)": r.get("A Price (CNY)"),
             "FX (HKD per 1 CNY)": r.get("FX (HKD per 1 CNY)"),
+            "H discount to A (%)": r.get("H discount to A (%)"),
+            "H upside to 5y median (%)": round(hit["upside"], 1),
             "Premium calc (%)": r["Premium calc (%)"],
             "5y median (pp)": r["5y median (pp)"],
-            "H upside to 5y median (%)": round(hit["upside"], 1),
             "5y percentile": r["5y percentile"],
             "H div yield (%)": r["H div yield (%)"],
             "P/E (H)": r["P/E (H)"],
@@ -102,8 +103,9 @@ def buy_watch(table: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=[
             "Company", "Name (ZH)", "H Ticker", "A Ticker",
             "Classification", "H Price (HKD)", "A Price (CNY)",
-            "FX (HKD per 1 CNY)", "Premium calc (%)",
-            "5y median (pp)", "H upside to 5y median (%)", "5y percentile",
+            "FX (HKD per 1 CNY)", "H discount to A (%)",
+            "H upside to 5y median (%)", "Premium calc (%)",
+            "5y median (pp)", "5y percentile",
             "H div yield (%)", "P/E (H)", "Mkt cap H (HKD bn)",
             "Why flagged"])
     return pd.DataFrame(rows).sort_values(

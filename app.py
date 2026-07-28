@@ -188,12 +188,12 @@ with st.sidebar:
             st.rerun()
 
 # -------------------------------------------------------------------- tabs
-tabs = st.tabs(["Stock Monitor", "Market Overview", "Attribution",
-                "Rankings", "Sectors", "Charts", "Alerts", "Commentary",
-                "Health"])
+tabs = st.tabs(["Stock Monitor", "Buy-level watch", "Market Overview",
+                "Attribution", "Rankings", "Sectors", "Charts", "Alerts",
+                "Commentary", "Health"])
 
-# ------------------------------------------------------- 2 Market Overview
-with tabs[1]:
+# ------------------------------------------------------- 3 Market Overview
+with tabs[2]:
     st.subheader("Hang Seng Stock Connect China AH Premium Index (HSAHP)")
     if hsahp.empty:
         st.error("No HSAHP data stored.")
@@ -331,8 +331,8 @@ DISPLAY_COLS = [
     "Company", "Name (ZH)", "H Ticker", "A Ticker",
     "Sector", "H Price (HKD)", "H % change today",
     "A Price (CNY)", "A % change today", "FX (HKD per 1 CNY)",
-    "Premium calc (%)", "H discount to A (%)",
-    "H upside to 5y median (%)",
+    "H discount to A (%)", "H upside to 5y median (%)",
+    "Premium calc (%)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
     "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
     "H div yield (%)", "A div yield (%)", "P/E (H)", "P/E (A)",
@@ -480,8 +480,8 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
     c2.caption("Click any column header to sort (click again to reverse).")
 
 
-# --------------------------------------------------------- 1 Stock Monitor
-with tabs[0]:
+# ------------------------------------------------------ 2 Buy-level watch
+with tabs[1]:
     st.markdown("#### 💡 Buy-level watch")
     watch = signals.buy_watch(table)
     if watch.empty:
@@ -514,11 +514,16 @@ with tabs[0]:
                 "Premium calc (%)": st.column_config.NumberColumn(
                     format="%.2f",
                     help="How much more the A share costs than the H "
-                         "share, computed by this dashboard from the "
-                         "three columns to the left:  "
+                         "share, computed by this dashboard:  "
                          "(A price × HKD-per-CNY ÷ H price − 1) × 100.  "
                          "Example: (¥10.00 × 1.16 ÷ HK$5.80 − 1) × 100 "
                          "= +100%."),
+                "H discount to A (%)": st.column_config.NumberColumn(
+                    format="%.2f",
+                    help=COLUMN_HELP["H discount to A (%)"]),
+                "H upside to 5y median (%)": st.column_config.NumberColumn(
+                    format="%.2f",
+                    help=COLUMN_HELP["H upside to 5y median (%)"]),
             })
         st.markdown("**Why each company is flagged:**")
         for _, r in watch.iterrows():
@@ -541,7 +546,9 @@ with tabs[0]:
         "with out-of-date prices never appear. Every flagged name is "
         "also recorded once per day in the Alerts tab. An admin can "
         "adjust these rules.")
-    st.divider()
+
+# --------------------------------------------------------- 1 Stock Monitor
+with tabs[0]:
     fc1, fc2 = st.columns([3, 1])
     filter_text = fc1.text_input(
         "🔎 Filter — type letters to narrow the tables below",
@@ -664,7 +671,7 @@ with tabs[0]:
         st.dataframe(db.audit_df(conn), use_container_width=True)
 
 # --------------------------------------------------------- 3 Attribution
-with tabs[2]:
+with tabs[3]:
     st.subheader("Premium attribution — what caused each premium move")
     st.markdown(
         "The premium can only change for three reasons: the **A-share price** "
@@ -688,7 +695,7 @@ with tabs[2]:
         st.plotly_chart(styled(fig, 300), use_container_width=True)
 
 # ------------------------------------------------------------ 4 Rankings
-with tabs[3]:
+with tabs[4]:
     # Same three groups as the Stock Monitor (always unfiltered here).
     rank_scopes = {
         "Focus A-H Holdings":
@@ -731,7 +738,7 @@ with tabs[3]:
         st.dataframe(ext.style.format(precision=2), use_container_width=True)
 
 # ------------------------------------------------------------- 5 Sectors
-with tabs[4]:
+with tabs[5]:
     st.markdown(
         "Each company is assigned to one of eight sectors in the "
         "sector map (`config/sector_map.csv`, applied automatically by "
@@ -764,7 +771,7 @@ with tabs[4]:
                "(premium narrowing); a rising line means widening.")
 
 # -------------------------------------------------------------- 6 Charts
-with tabs[5]:
+with tabs[6]:
     pick = st.selectbox("Company", table["Company"].sort_values(),
                         key="chart_pick")
     cid = int(table[table["Company"] == pick].iloc[0]["company_id"])
@@ -824,7 +831,7 @@ with tabs[5]:
     st.plotly_chart(styled(fig, 300), use_container_width=True)
 
 # -------------------------------------------------------------- 7 Alerts
-with tabs[6]:
+with tabs[7]:
     if st.button("Evaluate alert rules now", type="primary"):
         fired = alerts.evaluate(conn, table)
         st.session_state["fired"] = fired
@@ -842,7 +849,7 @@ with tabs[6]:
         st.dataframe(db.alerts_df(conn), use_container_width=True)
 
 # ---------------------------------------------------------- 8 Commentary
-with tabs[7]:
+with tabs[8]:
     st.subheader("Automated daily commentary (template, calculated facts)")
     st.markdown(commentary.daily_commentary(table, att))
     st.divider()
@@ -869,7 +876,7 @@ with tabs[7]:
                 st.divider()
 
 # --------------------------------------------------------------- 9 Health
-with tabs[8]:
+with tabs[9]:
     st.subheader("Data-source health")
     st.markdown(
         "This panel tells you **whether each data feed is actually working** "
