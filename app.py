@@ -362,7 +362,9 @@ COLUMN_HELP = {
     "H Ticker": "Hong Kong stock code of the H share.",
     "A Ticker": "Mainland stock code of the A share "
                 "(.SS = Shanghai, .SZ = Shenzhen).",
-    "Sector": "Dashboard sector grouping (editable by an admin).",
+    "Sector": "One of eight sector buckets from config/sector_map.csv "
+              "(utilities & transport sit under Industrials; property "
+              "under Financials; autos & appliances under Consumer).",
     "H Price (HKD)": "Price of the Hong Kong (H) listing, in HK dollars.",
     "A Price (CNY)": "Price of the mainland (A) listing, in yuan (CNY).",
     "H % change today": DAY_CHANGE_HELP.format(leg="H"),
@@ -538,11 +540,19 @@ with tabs[0]:
                    f"matching “{filter_text}”. (The magnifier icon on any "
                    "table also searches within it.)")
 
+    def by_sector(t: pd.DataFrame) -> pd.DataFrame:
+        # grouped view: sectors together (config.SECTORS order), then A→Z
+        order = {s: i for i, s in enumerate(config.SECTORS)}
+        return t.sort_values(
+            ["Sector", "Company"],
+            key=lambda col: col.map(order).fillna(99)
+            if col.name == "Sector" else col)
+
     groups = {
         "Focus A-H Holdings":
-            ftable[ftable["Classification"] == config.FOCUS],
+            by_sector(ftable[ftable["Classification"] == config.FOCUS]),
         "Other A-H Stocks":
-            ftable[ftable["Classification"] != config.FOCUS],
+            by_sector(ftable[ftable["Classification"] != config.FOCUS]),
         "Full A-H Universe": ftable,
     }
     sub = st.tabs(list(groups))
@@ -569,7 +579,7 @@ with tabs[0]:
         st.markdown("##### Focus list")
         st.caption("The Focus list is stored in the database and "
                    "audit-logged. This button reconciles it against "
-                   "`config/focus_list.csv` (the standard 19 names): "
+                   "`config/focus_list.csv` (the standard 20 names): "
                    "listed companies become Focus, current Focus members "
                    "not on the list move to Other A-H Stock.")
         if st.button("Apply standard Focus list"):
@@ -583,6 +593,24 @@ with tabs[0]:
             if res["missing_from_db"]:
                 st.warning(f"On the list but not in the database: "
                            f"{res['missing_from_db']}")
+            st.rerun()
+        st.markdown("##### Sector map")
+        st.caption("Sectors are stored in the database and reconciled "
+                   "against `config/sector_map.csv`, which tags every "
+                   "company in the universe into one of the eight "
+                   "sectors. The live refresh re-applies the map "
+                   "automatically; this button applies it right now. "
+                   "Changes are recorded in the constituent log.")
+        if st.button("Apply sector map"):
+            from ahmon.sector_map import apply_sector_map
+            res = apply_sector_map(conn,
+                                   source=f"sector_map:{user['email']}")
+            st.session_state["data_version"] += 1
+            st.success(f"{len(res['updated'])} companies re-tagged · "
+                       f"{res['mapped_size']} in the map")
+            if res["unmapped"]:
+                st.warning(f"In the database but not in the map "
+                           f"(left as-is): {res['unmapped']}")
             st.rerun()
         st.markdown("##### Reclassify a company")
         c1, c2, c3 = st.columns([2, 2, 1])
@@ -689,8 +717,10 @@ with tabs[3]:
 # ------------------------------------------------------------- 5 Sectors
 with tabs[4]:
     st.markdown(
-        "Each company is assigned to one of eight sectors in the editable "
-        "classification file (`config/portfolio_sample.csv`). The numbers "
+        "Each company is assigned to one of eight sectors in the "
+        "sector map (`config/sector_map.csv`, applied automatically by "
+        "the live refresh and re-appliable from the Stock Monitor admin "
+        "panel). The numbers "
         "below are computed from the same per-company premiums shown in the "
         "Stock Monitor" +
         (" — currently **synthetic sample data**" if n_sample else "") +
