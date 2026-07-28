@@ -187,12 +187,12 @@ with st.sidebar:
             st.rerun()
 
 # -------------------------------------------------------------------- tabs
-tabs = st.tabs(["Market Overview", "Stock Monitor", "Attribution",
+tabs = st.tabs(["Stock Monitor", "Market Overview", "Attribution",
                 "Rankings", "Sectors", "Charts", "Alerts", "Commentary",
                 "Health"])
 
-# ------------------------------------------------------- 1 Market Overview
-with tabs[0]:
+# ------------------------------------------------------- 2 Market Overview
+with tabs[1]:
     st.subheader("Hang Seng Stock Connect China AH Premium Index (HSAHP)")
     if hsahp.empty:
         st.error("No HSAHP data stored.")
@@ -462,7 +462,8 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
     c2.caption("Click any column header to sort (click again to reverse).")
 
 
-with tabs[1]:
+# --------------------------------------------------------- 1 Stock Monitor
+with tabs[0]:
     st.markdown("#### 💡 Buy-level watch")
     watch = signals.buy_watch(table)
     if watch.empty:
