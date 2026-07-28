@@ -446,11 +446,23 @@ for c in DISPLAY_COLS:
             help=COLUMN_HELP.get(c))
 
 
+# Sector cells wear a light tint of the sector's series color (same hue
+# as its line in the Sectors chart); text stays in normal ink so the
+# name, not the color, carries the identity.
+SECTOR_TINT = {s: c + "2e" for s, c in SECTOR_COLOR.items()}   # ~18% alpha
+
+
+def sector_css(v):
+    tint = SECTOR_TINT.get(v)
+    return f"background-color: {tint}" if tint else None
+
+
 def show_table(t: pd.DataFrame, key: str = "tbl"):
     if t.empty:
         st.info("No companies in this group.")
         return
-    st.dataframe(t[DISPLAY_COLS], column_config=NUM_CONFIG,
+    st.dataframe(t[DISPLAY_COLS].style.map(sector_css, subset=["Sector"]),
+                 column_config=NUM_CONFIG,
                  use_container_width=True,
                  height=min(560, 60 + 35 * len(t)), hide_index=True)
     c1, c2 = st.columns([1, 3])
@@ -727,7 +739,8 @@ with tabs[4]:
         ". *Median premium* = the middle company's A-share premium within "
         "the sector.")
     st.dataframe(metrics.sector_stats(conn, table)
-                 .style.format(precision=2, na_rep="—"),
+                 .style.format(precision=2, na_rep="—")
+                 .map(sector_css, subset=["Sector"]),
                  use_container_width=True)
     hist = metrics.sector_history(conn)
     fig = go.Figure()
