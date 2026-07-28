@@ -75,6 +75,11 @@ def sync_universe(conn, quotes: pd.DataFrame) -> dict:
     """Add feed companies missing from the DB as 'Other A-H Stock'.
     Existing companies keep their names/sector/classification — the feed
     never overwrites owner-managed data."""
+    from .sector_map import load_sector_map
+    try:
+        smap = load_sector_map()
+    except Exception:                    # map unreadable → visible fallback
+        smap = {}
     comps = db.companies_df(conn)
     existing = set(comps["h_ticker"])
     added = []
@@ -82,7 +87,9 @@ def sync_universe(conn, quotes: pd.DataFrame) -> dict:
         if r["h_ticker"] in existing:
             continue
         cid = db.upsert_company(conn, r["name_zh"], r["h_ticker"],
-                                r["a_ticker"], config.SECTOR_UNCLASSIFIED,
+                                r["a_ticker"],
+                                smap.get(r["h_ticker"],
+                                         config.SECTOR_UNCLASSIFIED),
                                 r["name_zh"])
         existing.add(r["h_ticker"])
         db.set_classification(conn, cid, config.OTHER,
@@ -227,6 +234,17 @@ def refresh_live(conn, ak_source=None, yahoo_source=None,
     uni = sync_universe(conn, quotes)
     summary["universe_added"] = len(uni["added"])
     summary["universe_missing"] = len(uni["missing_from_feed"])
+
+    # 4a — sector taxonomy (config/sector_map.csv is the source of truth;
+    # idempotent, so this is a no-op on every cycle where nothing changed)
+    try:
+        from .sector_map import apply_sector_map
+        summary["sectors_updated"] = len(
+            apply_sector_map(conn)["updated"])
+    except Exception as e:               # cosmetic vs prices — never fatal
+        summary["sectors_updated"] = 0
+        alert("sector_map", f"sector map apply failed: {e}",
+              severity="warning")
 
     # 5+6 — independent premium calc and idempotent upsert
     try:

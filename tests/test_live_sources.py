@@ -181,7 +181,10 @@ class TestRefreshLive:
         self.run(live_conn)
         comps = db.companies_df(live_conn).set_index("h_ticker")
         assert comps.loc["6127.HK", "classification"] == config.OTHER
-        assert comps.loc["6127.HK", "sector"] == config.SECTOR_UNCLASSIFIED
+        # a new company known to config/sector_map.csv gets its sector at
+        # once (6127.HK = Joinn Laboratories → Healthcare); only tickers
+        # absent from the map stay visibly Unclassified
+        assert comps.loc["6127.HK", "sector"] == "Healthcare"
         # the feed never renames existing companies
         assert comps.loc["939.HK", "name_en"] == "China Construction Bank"
         n = live_conn.execute("SELECT COUNT(*) FROM constituent_log "

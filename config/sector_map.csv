@@ -1,0 +1,202 @@
+h_ticker,name_en,sector
+38.HK,First Tractor,Industrials
+107.HK,Sichuan Expressway Company Limited,Industrials
+168.HK,Tsingtao Brewery,Consumer
+177.HK,Jiangsu Expressway,Industrials
+187.HK,Beijing Jingcheng Machinery Electric Company Limited,Industrials
+300.HK,"Midea Group Co., Ltd.",Consumer
+317.HK,CSSC Offshore & Marine Engineering (Group) Company Limited,Industrials
+323.HK,Maanshan Iron & Steel Company Limited,Mining & Materials
+338.HK,Shanghai Petrochemical,Oil & Gas
+347.HK,Angang Steel Company Limited,Mining & Materials
+358.HK,Jiangxi Copper,Mining & Materials
+386.HK,Sinopec Corp,Oil & Gas
+390.HK,China Railway Group,Industrials
+470.HK,WUXI LEAD,Industrials
+501.HK,"OmniVision Integrated Circuits Group, Inc.",Technology
+525.HK,Guangshen Railway Company Limited,Industrials
+537.HK,RIGOL,Technology
+548.HK,Shenzhen Expressway Corporation Limited,Industrials
+553.HK,Nanjing Panda Electronics Company Limited,Technology
+564.HK,ZCZL Industrial Technology Group Company Limited,Industrials
+568.HK,Shandong Molong Petroleum Machinery Company Limited,Oil & Gas
+588.HK,Beijing North Star Company Limited,Financials
+598.HK,Sinotrans,Industrials
+638.HK,Fibocom Wireless Inc.,Technology
+668.HK,ANKER,Consumer
+670.HK,China Eastern Airlines Corporation Limited,Industrials
+699.HK,Ningbo Joyson Electronic Corp.,Consumer
+719.HK,Shandong Xinhua Pharmaceutical Company Limited,Healthcare
+728.HK,China Telecom,Telecom
+753.HK,Air China,Industrials
+763.HK,ZTE,Technology
+811.HK,"Xinhua Winshare Publishing and Media Co., Ltd.",Consumer
+857.HK,PetroChina,Oil & Gas
+874.HK,Guangzhou Baiyunshan,Healthcare
+883.HK,CNOOC,Oil & Gas
+895.HK,Dongjiang Environmental Company Limited,Industrials
+902.HK,"Huaneng Power International, Inc.",Industrials
+914.HK,Anhui Conch,Mining & Materials
+916.HK,China Longyuan Power Group Corporation Limited,Industrials
+921.HK,"Hisense Home Appliances Group Co., Ltd.",Consumer
+939.HK,China Construction Bank,Financials
+941.HK,China Mobile,Telecom
+956.HK,China Suntien Green Energy Corporation Limited,Industrials
+981.HK,SMIC,Technology
+991.HK,"Datang International Power Generation Co., Ltd.",Industrials
+995.HK,Anhui Expressway Company Limited,Industrials
+998.HK,China CITIC Bank Corporation Limited,Financials
+1033.HK,Sinopec Oilfield Service Corporation,Oil & Gas
+1053.HK,Chongqing Iron & Steel Company Limited,Mining & Materials
+1055.HK,China Southern Airlines Company Limited,Industrials
+1057.HK,Zhejiang Shibao Company Limited,Consumer
+1065.HK,Tianjin Capital Environmental Protection Group Company Limited,Industrials
+1071.HK,Huadian Power International Corporation Limited,Industrials
+1072.HK,Dongfang Electric,Industrials
+1081.HK,DAJIN,Industrials
+1088.HK,China Shenhua,Mining & Materials
+1108.HK,Triumph New Energy Company Limited,Mining & Materials
+1138.HK,"COSCO SHIPPING Energy Transportation Co., Ltd.",Industrials
+1157.HK,"Zoomlion Heavy Industry Science and Technology Co., Ltd.",Industrials
+1171.HK,Yankuang Energy,Mining & Materials
+1186.HK,China Railway Construction,Industrials
+1187.HK,"Cofoe Medical Technology Co.,Ltd.",Healthcare
+1211.HK,BYD,Consumer
+1276.HK,"Jiangsu Hengrui Pharmaceuticals Co.,Ltd",Healthcare
+1288.HK,Agricultural Bank of China,Financials
+1304.HK,"Fortior Technology (Shenzhen) Co., Ltd.",Technology
+1330.HK,"Dynagreen Environmental Protection Group Co., Ltd.",Industrials
+1336.HK,New China Life,Financials
+1339.HK,The People's Insurance Company (Group) of China Limited,Financials
+1347.HK,Hua Hong Grace Semiconductor Limited,Technology
+1349.HK,"Shanghai Fudan-Zhangjiang Bio-Pharmaceutical Co.,Ltd.",Healthcare
+1375.HK,"Central China Securities Co., Ltd.",Financials
+1377.HK,DTECH,Technology
+1385.HK,Shanghai Fudan Microelectronics Group Company Limited,Technology
+1398.HK,ICBC,Financials
+1456.HK,"Guolian Minsheng Securities Co., Ltd.",Financials
+1513.HK,Livzon Pharma,Healthcare
+1528.HK,Red Star Macalline Group Corporation Ltd.,Consumer
+1618.HK,Metallurgical Corporation of China Ltd.,Industrials
+1635.HK,"Shanghai Dazhong Public Utilities(Group) Co.,Ltd.",Industrials
+1658.HK,"Postal Savings Bank of China Co., Ltd.",Financials
+1688.HK,Lingyi iTech (Guangdong) Company,Technology
+1766.HK,CRRC Corporation Limited,Industrials
+1772.HK,"Ganfeng Lithium Group Co., Ltd.",Mining & Materials
+1776.HK,GF Securities,Financials
+1787.HK,Shandong Gold,Mining & Materials
+1800.HK,China Communications Construction Company Limited,Industrials
+1812.HK,Shandong Chenming Paper Holdings Limited,Mining & Materials
+1816.HK,CGN Power,Industrials
+1858.HK,"Beijing Chunlizhengda Medical Instruments Co., Ltd.",Healthcare
+1877.HK,"Shanghai Junshi Biosciences Co., Ltd.",Healthcare
+1880.HK,China Tourism Group Duty Free Corporation Limited,Consumer
+1898.HK,China Coal,Mining & Materials
+1919.HK,COSCO Shipping,Industrials
+1963.HK,"Bank of Chongqing Co., Ltd.",Financials
+1988.HK,"China Minsheng Banking Corp., Ltd.",Financials
+1989.HK,Delton Technology (Guangzhou) Inc.,Technology
+2009.HK,BBMG Corporation,Mining & Materials
+2016.HK,"China Zheshang Bank Co., Ltd",Financials
+2039.HK,"China International Marine Containers (Group) Co., Ltd.",Industrials
+2050.HK,"Zhejiang Sanhua Intelligent Controls Co.,Ltd",Industrials
+2068.HK,China Aluminum International Engineering Corporation Limited,Industrials
+2196.HK,Fosun Pharma,Healthcare
+2202.HK,"China Vanke Co., Ltd.",Financials
+2208.HK,"Goldwind Science&Technology Co., Ltd.",Industrials
+2218.HK,"Yantai North Andre Juice Co., Ltd.",Consumer
+2238.HK,"Guangzhou Automobile Group Co., Ltd.",Consumer
+2249.HK,Nexchip Semiconductor Corporation,Technology
+2315.HK,"Biocytogen Pharmaceuticals (Beijing) Co., Ltd.",Healthcare
+2318.HK,Ping An,Financials
+2333.HK,Great Wall Motor,Consumer
+2338.HK,Weichai Power,Industrials
+2359.HK,"WuXi AppTec Co., Ltd.",Healthcare
+2402.HK,"Beijing SinoHytec Co., Ltd.",Industrials
+2465.HK,"Jiangsu Lopal Tech. Group Co., Ltd.",Mining & Materials
+2475.HK,LUXSHARE ICT,Technology
+2476.HK,VGT,Technology
+2493.HK,MABWELL-B,Healthcare
+2579.HK,"CNGR Advanced Material Co., Ltd.",Mining & Materials
+2600.HK,Aluminum Corporation of China Limited,Mining & Materials
+2601.HK,CPIC,Financials
+2603.HK,"Xiamen Jihong Co., Ltd",Consumer
+2607.HK,"Shanghai Pharmaceuticals Holding Co., Ltd",Healthcare
+2611.HK,"Guotai Haitong Securities Co., Ltd.",Financials
+2628.HK,China Life,Financials
+2631.HK,"SICC Co., Ltd.",Technology
+2648.HK,"Anjoy Foods Group Co., Ltd.",Consumer
+2676.HK,"Suzhou Novosense Microelectronics Co., Ltd.",Technology
+2691.HK,NANHUA FUTURES,Financials
+2692.HK,ZHAOWEI,Industrials
+2701.HK,NSING TECH,Technology
+2714.HK,"Muyuan Foods Group Co., Ltd.",Consumer
+2715.HK,ESTUN,Industrials
+2727.HK,"Shanghai Electric Group Co., Ltd.",Industrials
+2768.HK,"Qingdao Gon Technology Co., Ltd.",Mining & Materials
+2865.HK,"Hainan Drinda New Energy Technology Co., Ltd.",Industrials
+2866.HK,"COSCO SHIPPING Development Co., Ltd.",Industrials
+2880.HK,"Liaoning Port Co., Ltd.",Industrials
+2883.HK,China Oilfield Services,Oil & Gas
+2899.HK,Zijin Mining,Mining & Materials
+3200.HK,HANS CNC,Technology
+3268.HK,MEIG,Technology
+3288.HK,Foshan Haitian Flavouring and Food Company Ltd.,Consumer
+3296.HK,HUAQIN,Technology
+3328.HK,"Bank of Communications Co., Ltd.",Financials
+3347.HK,"Hangzhou Tigermed Consulting Co., Ltd",Healthcare
+3369.HK,"Qinhuangdao Port Co., Ltd.",Industrials
+3606.HK,"Fuyao Glass Industry Group Co., Ltd.",Consumer
+3618.HK,"Chongqing Rural Commercial Bank Co., Ltd.",Financials
+3661.HK,SG Micro Corp,Technology
+3678.HK,"Soho Holly Futures Co., Ltd.",Financials
+3750.HK,"Contemporary Amperex Technology Co., Limited",Industrials
+3759.HK,"Pharmaron Beijing Co., Ltd.",Healthcare
+3866.HK,"Bank of Qingdao Co., Ltd.",Financials
+3898.HK,"Zhuzhou CRRC Times Electric Co., Ltd.",Industrials
+3908.HK,China International Capital Corporation Limited,Financials
+3958.HK,Orient Securities Company Limited,Financials
+3968.HK,China Merchants Bank,Financials
+3969.HK,China Railway Signal & Communication Corporation Limited,Industrials
+3986.HK,GIGADEVICE,Technology
+3988.HK,Bank of China,Financials
+3993.HK,CMOC Group Limited,Mining & Materials
+3996.HK,China Energy Engineering Corporation Limited,Industrials
+6030.HK,CITIC Securities,Financials
+6031.HK,"Sany Heavy Industry Co.,Ltd",Industrials
+6066.HK,"CSC Financial Co., Ltd.",Financials
+6067.HK,SENIOR MATERIAL,Mining & Materials
+6099.HK,"China Merchants Securities Co., Ltd.",Financials
+6127.HK,"Joinn Laboratories(China)Co.,Ltd.",Healthcare
+6160.HK,BeOne Medicines AG,Healthcare
+6166.HK,"CIG Shanghai Co., Ltd.",Technology
+6178.HK,Everbright Securities Company Limited,Financials
+6185.HK,CanSino Biologics Inc.,Healthcare
+6196.HK,"Bank of Zhengzhou Co., Ltd.",Financials
+6198.HK,"Qingdao Port International Co., Ltd.",Industrials
+6613.HK,"Lens Technology Co., Ltd.",Technology
+6655.HK,"Huaxin Building Materials Group Co., Ltd.",Mining & Materials
+6680.HK,"JL Mag Rare-Earth Co., Ltd.",Mining & Materials
+6690.HK,"Haier Smart Home Co., Ltd.",Consumer
+6693.HK,Chifeng Jilong Gold Mining Group Limited,Mining & Materials
+6745.HK,BEFAR GROUP,Mining & Materials
+6806.HK,"Shenwan Hongyuan Group Co., Ltd.",Financials
+6809.HK,MONTAGE TECH,Technology
+6818.HK,China Everbright Bank Company Limited,Financials
+6821.HK,"Asymchem Laboratories (Tianjin) Co., Ltd.",Healthcare
+6826.HK,"Shanghai Haohai Biological Technology Co., Ltd.",Healthcare
+6865.HK,"Flat Glass Group Co., Ltd.",Mining & Materials
+6869.HK,Yangtze Optical Fibre And Cable Joint Stock Limited Company,Technology
+6881.HK,"China Galaxy Securities Co., Ltd.",Financials
+6886.HK,Huatai Securities,Financials
+6936.HK,"S.F. Holding Co., Ltd.",Industrials
+6951.HK,CCTC,Technology
+9611.HK,LONGCHEER,Technology
+9630.HK,CFMEE,Technology
+9696.HK,Tianqi Lithium Corporation,Mining & Materials
+9927.HK,"Seres Group Co.,Ltd",Consumer
+9969.HK,InnoCare Pharma Limited,Healthcare
+9980.HK,"Eastroc Beverage (Group) Co., Ltd.",Consumer
+9981.HK,"ShenZhen Woer Heat-Shrinkable Material Co.,Ltd.",Mining & Materials
+9989.HK,"Shenzhen Hepalink Pharmaceutical Group Co., Ltd.",Healthcare
+9995.HK,"RemeGen Co., Ltd.",Healthcare
