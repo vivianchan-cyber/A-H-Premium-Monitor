@@ -61,10 +61,11 @@ class TestApplyFocusList:
         assert res["missing_from_db"] == ["9999.HK"]
         assert len(db.companies_df(conn)) == 4      # nothing invented
 
-    def test_shipped_list_has_19_unique_tickers(self):
+    def test_shipped_list_has_20_unique_tickers(self):
         lst = pd.read_csv(config.CONFIG_DIR / "focus_list.csv")
-        assert len(lst) == 19
+        assert len(lst) == 20
         assert lst["h_ticker"].is_unique
+        assert "1211.HK" in set(lst["h_ticker"])       # BYD (owner request)
 
 
 class TestFilterTable:
