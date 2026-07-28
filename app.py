@@ -600,18 +600,48 @@ with tabs[0]:
             show_table(t.reset_index(drop=True),
                        key=name.replace(" ", "_").lower())
             if name == "Focus A-H Holdings" and not t.empty:
-                rest = table[table["Classification"] != config.FOCUS]
-                st.markdown("##### Rest of the A–H universe (summary)")
+                n_focus = int(
+                    (table["Classification"] == config.FOCUS).sum())
+                st.markdown("##### Full A-H Universe (summary)")
+                st.caption(f"All {len(table)} A–H companies "
+                           f"= {n_focus} Focus A-H Holdings "
+                           f"+ {len(table) - n_focus} Other A-H Stocks.")
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Companies", len(rest))
-                c2.metric("Median premium",
-                          f"{rest['Premium calc (%)'].median():.1f}%")
-                med_d1 = rest["Δ1d (pp)"].median()
-                c3.metric("Median Δ1d",
-                          "—" if pd.isna(med_d1) else f"{med_d1:+.2f} pp",
-                          help="Needs at least two days of stored history.")
-                c4.metric(">5pp movers today",
-                          int((rest["Δ1d (pp)"].abs() > 5).sum()))
+                c1.metric(
+                    "Companies", len(table),
+                    help="Every dual-listed company tracked — each has "
+                         "both a Hong Kong H share and a mainland A "
+                         "share. The count grows automatically when a "
+                         "new A–H pair starts trading.")
+                med_disc = table["H discount to A (%)"].median()
+                med_prem = table["Premium calc (%)"].median()
+                c2.metric(
+                    "Median H discount to A",
+                    "—" if pd.isna(med_disc) else f"{med_disc:.1f}%",
+                    help="The middle company's H-share discount to its A "
+                         "twin: half the universe trades at a bigger "
+                         "discount, half at a smaller one. Equivalent to "
+                         f"a median A-share premium of {med_prem:.1f}% "
+                         "(the industry's usual convention).")
+                med_d1 = table["Δ1d (pp)"].median()
+                c3.metric(
+                    "Median Δ1d",
+                    "—" if pd.isna(med_d1) else f"{med_d1:+.2f} pp",
+                    help="The middle company's one-day change in the "
+                         "A-share premium, in percentage points. "
+                         "Positive = price gaps widened since yesterday "
+                         "(H shares got relatively cheaper); negative = "
+                         "gaps narrowed. Changes are measured on the "
+                         "premium because that is the industry "
+                         "convention. Needs at least two days of stored "
+                         "history.")
+                c4.metric(
+                    ">5pp movers today",
+                    int((table["Δ1d (pp)"].abs() > 5).sum()),
+                    help="How many companies' premium moved more than 5 "
+                         "percentage points since yesterday, in either "
+                         "direction — a quick gauge of how turbulent "
+                         "the A–H gap is today.")
 
     st.divider()
     if IS_ADMIN:
