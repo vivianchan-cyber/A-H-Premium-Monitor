@@ -332,14 +332,19 @@ DISPLAY_COLS = [
     "Sector", "H Price (HKD)", "H % change today",
     "A Price (CNY)", "A % change today", "FX (HKD per 1 CNY)",
     "H discount to A (%)", "H upside to 5y median (%)",
+    "H div yield (%)", "A div yield (%)",
+    "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
+    "P/E (H)", "P/E (A)", "P/B (H)", "P/B (A)",
+    "3y median (pp)", "5y median (pp)", "Dist from 5y median (pp)",
+    "5y percentile", "Dist from 3y median (pp)", "52w percentile",
+    # premium level + its changes live together at the right end
     "Premium calc (%)",
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
-    "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
-    "H div yield (%)", "A div yield (%)", "P/E (H)", "P/E (A)",
-    "P/B (H)", "P/B (A)", "3y median (pp)",
-    "5y median (pp)", "Dist from 5y median (pp)", "5y percentile",
-    "Dist from 3y median (pp)", "52w percentile",
     "Updated", "Quality"]
+
+# The owner's two go-to columns get a standing highlight in every table.
+HIGHLIGHT_COLS = ["H discount to A (%)", "H div yield (%)"]
+HIGHLIGHT_CSS = "background-color: #eda10026"      # soft amber, ~15%
 
 
 TEXT_COLS = {"Company", "Name (ZH)", "Classification", "Sector", "H Ticker",
@@ -388,17 +393,25 @@ COLUMN_HELP = {
         "conservative version of the convergence bet (full convergence "
         "to the A price would return the premium itself).",
     "Δ1d (pp)": "Change in the premium vs the previous trading day, in "
-                "percentage points.",
+                "percentage points. Positive = the gap widened (the H "
+                "share got relatively cheaper vs its A twin); negative "
+                "= the gap narrowed.",
     "Δ1w (pp)": "Change in the premium vs 5 trading days ago, in "
-                "percentage points.",
+                "percentage points. Positive = the gap widened (H "
+                "relatively cheaper); negative = it narrowed.",
     "Δ1m (pp)": "Change in the premium vs 21 trading days (≈1 month) "
-                "ago, in percentage points.",
+                "ago, in percentage points. Positive = the gap widened "
+                "(H relatively cheaper); negative = it narrowed.",
     "Δ3m (pp)": "Change in the premium vs 63 trading days (≈3 months) "
-                "ago, in percentage points.",
+                "ago, in percentage points. Positive = the gap widened "
+                "(H relatively cheaper); negative = it narrowed.",
     "ΔYTD (pp)": "Change in the premium since the final trading day of "
-                 "last year, in percentage points.",
+                 "last year, in percentage points. Positive = the gap "
+                 "widened (H relatively cheaper); negative = it "
+                 "narrowed.",
     "Δ1y (pp)": "Change in the premium vs 252 trading days (≈1 year) "
-                "ago, in percentage points.",
+                "ago, in percentage points. Positive = the gap widened "
+                "(H relatively cheaper); negative = it narrowed.",
     "Mkt cap H (HKD bn)": "Total market value priced off the H share, "
                           "in billions of HK dollars.",
     "Mkt cap A (CNY bn)": "Total market value priced off the A share, "
@@ -465,7 +478,8 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
     if t.empty:
         st.info("No companies in this group.")
         return
-    st.dataframe(t[DISPLAY_COLS].style.map(sector_css, subset=["Sector"]),
+    st.dataframe(t[DISPLAY_COLS].style.map(sector_css, subset=["Sector"])
+                 .map(lambda _: HIGHLIGHT_CSS, subset=HIGHLIGHT_COLS),
                  column_config=NUM_CONFIG,
                  use_container_width=True, row_height=40,
                  height=min(620, 70 + 40 * len(t)), hide_index=True)
