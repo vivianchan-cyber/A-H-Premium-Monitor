@@ -342,8 +342,8 @@ DISPLAY_COLS = [
     "Δ1d (pp)", "Δ1w (pp)", "Δ1m (pp)", "Δ3m (pp)", "ΔYTD (pp)", "Δ1y (pp)",
     "Updated", "Quality"]
 
-# The owner's two go-to columns get a standing highlight in every table.
-HIGHLIGHT_COLS = ["H discount to A (%)", "H div yield (%)"]
+# The owner's go-to columns get a standing highlight in every table.
+HIGHLIGHT_COLS = ["H discount to A (%)", "H div yield (%)", "P/E (H)"]
 HIGHLIGHT_CSS = "background-color: #eda10026"      # soft amber, ~15%
 
 
