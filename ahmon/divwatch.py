@@ -50,6 +50,11 @@ NEAR_BAND_PCT = 5.0
 STATUS_ORDER = {"TOP-UP REVIEW": 0, "NEAR TOP-UP": 1, "WAIT": 2,
                 "SET DPS": 3, "—": 4}
 
+# Profile names stored by earlier versions of the watchlist. The table
+# must render from whatever the database holds — a re-seed fixes the
+# stored values, but rendering never assumes it already happened.
+LEGACY_PROFILE = {"no_dividend": "not_yield_based"}
+
 
 def seed_watchlist(conn, csv_path: str | Path | None = None) -> dict:
     """Idempotent: adds/updates names and profiles, never drops one."""
@@ -95,7 +100,8 @@ def build_topup_table(conn) -> pd.DataFrame:
 
     out = []
     for _, w in watch.iterrows():
-        t, profile = w["ticker"], w["profile"]
+        t = w["ticker"]
+        profile = LEGACY_PROFILE.get(w["profile"], w["profile"])
         price = asof = None
         if t in comps.index:
             obs = conn.read_df(
@@ -119,7 +125,7 @@ def build_topup_table(conn) -> pd.DataFrame:
                 status, dist = classify_topup(price, topup)
         out.append({
             "Company": w["name"], "Ticker": t,
-            "Classification": PROFILE_LABEL[profile],
+            "Classification": PROFILE_LABEL.get(profile, profile),
             "Price (HKD)": price,
             "Approved DPS (HKD)": dps,
             "Current yield (%)": cur_yield,

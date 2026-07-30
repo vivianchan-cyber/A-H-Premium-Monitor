@@ -106,6 +106,21 @@ class TestTable:
         assert d.loc["1398.HK", "dps_hkd"] == pytest.approx(0.36)
         assert d.loc["1398.HK", "updated_by"] == "b@x"
 
+    def test_legacy_profile_rows_render_not_crash(self, conn):
+        # regression: staging DB held rows seeded by the earlier watcher
+        # with profile='no_dividend'; the page must render from whatever
+        # is stored, before any re-seed happens
+        db.upsert_watchlist(conn, [
+            {"ticker": "9999.HK", "name": "Legacy Co",
+             "profile": "no_dividend"},
+            {"ticker": "9998.HK", "name": "Junk Co",
+             "profile": "mystery_profile"},
+        ])
+        t = divwatch.build_topup_table(conn).set_index("Ticker")
+        assert t.loc["9999.HK", "Classification"] == "Not yield-based"
+        assert t.loc["9999.HK", "Status"] == "—"
+        assert t.loc["9998.HK", "Status"] == "—"   # unknown → no signal
+
     def test_seed_updates_profiles_never_drops(self, conn, tmp_path):
         small = tmp_path / "small.csv"
         pd.DataFrame({"ticker": ["883.HK"], "name": ["CNOOC"],
