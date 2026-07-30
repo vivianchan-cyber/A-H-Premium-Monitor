@@ -497,6 +497,57 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
 # ------------------------------------------------------ 2 Buy-level watch
 with tabs[1]:
     st.markdown("#### 💡 Buy-level watch")
+    st.markdown("##### Dividend yield watch — HK dividend book")
+    st.caption(
+        "A name is **in buy range** when its trailing dividend yield is "
+        "at or above its threshold: **5.0%** for stable payers, **6.0%** "
+        "for cyclical (commodity-linked) payers — the extra 1pp buffers "
+        "a dividend cut. The value-trap guard then checks the **forward** "
+        "yield: **BUY** only when both clear the bar; **CHECK** when the "
+        "threshold fired but the forward consensus is below it, missing, "
+        "or stale (>90 days) — i.e. the yield may be fictional; **WAIT** "
+        "when below the bar. Names are never dropped for being below "
+        "threshold — watching them cross is the point.")
+    from ahmon import divwatch as _divwatch
+    dw = _divwatch.build_watch_table(conn)
+    if dw.empty:
+        st.info("Dividend watchlist is empty — an admin can seed it "
+                "below (20 A-H names now; the full ~36-name book loads "
+                "from the positions export).")
+    else:
+        show_all = st.toggle(
+            "Show all names (including no-dividend names)", value=False,
+            help="No-dividend names are monitored, not evaluated; they "
+                 "stay out of the default view. If one initiates a "
+                 "dividend it is promoted to WAIT and appears here "
+                 "automatically.")
+        dview = dw if show_all else dw[dw["Status"] != "NO POLICY"]
+        _status_css = {"BUY": "background-color: #0083002e",
+                       "CHECK": "background-color: #eda1002e"}
+        st.dataframe(
+            dview.style.format(precision=2, na_rep="—")
+            .map(lambda v: _status_css.get(v, ""), subset=["Status"]),
+            hide_index=True, use_container_width=True, row_height=40,
+            height=min(620, 70 + 40 * len(dview)))
+        n_vendor = int((dw["Yield source"] == "vendor_yield").sum())
+        if n_vendor:
+            st.caption(
+                f"⚠️ Interim data: {n_vendor} names currently use the "
+                "vendor yield field (Eastmoney) as the trailing yield — "
+                "the declared-dividend history feed (which computes DPS "
+                "properly and excludes specials) is the next build step. "
+                "No forward-consensus source is wired yet, so every "
+                "in-range name shows CHECK rather than BUY: that is the "
+                "guard being conservative, not a bug.")
+    if IS_ADMIN:
+        if st.button("Seed watchlist + refresh interim yields"):
+            r = _divwatch.seed_watchlist(conn)
+            n = _divwatch.bridge_from_monitor(conn)
+            st.success(f"{r['total']} names on the watchlist · "
+                       f"{n} interim yield rows written")
+            st.rerun()
+    st.divider()
+    st.markdown("##### A–H premium reversion screen (original signal)")
     watch = signals.buy_watch(table)
     if watch.empty:
         st.info("No company currently meets the buy-level screen "

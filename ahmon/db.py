@@ -136,12 +136,52 @@ sa.Table(
     sa.Column("h_ticker", sa.Text, nullable=False),
     sa.Column("detail", sa.Text))
 
+# --- dividend buy-level watch (whole HK book, not only A-H pairs) --------
+# Overlap note: daily_obs.h_div_yield / company_stats.h_div_yield remain
+# the VENDOR yield fields (Eastmoney); yield_daily.vendor_yield mirrors
+# them for cross-checking against the yield computed from declared DPS.
+
+sa.Table(
+    "div_watchlist", metadata,
+    sa.Column("ticker", sa.Text, primary_key=True),
+    sa.Column("name", sa.Text, nullable=False),
+    sa.Column("profile", sa.Text, nullable=False),  # stable/cyclical/no_dividend
+    sa.Column("active", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("added_at", sa.Text, nullable=False))
+
+sa.Table(
+    "dps_events", metadata,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("ticker", sa.Text, nullable=False),
+    sa.Column("ex_date", sa.Text, nullable=False),
+    sa.Column("amount_hkd", sa.Float, nullable=False),
+    sa.Column("special", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("source", sa.Text, nullable=False),
+    sa.Column("recorded_at", sa.Text, nullable=False),
+    sa.UniqueConstraint("ticker", "ex_date", "amount_hkd", "special",
+                        name="uq_dps_event"))
+
+sa.Table(
+    "yield_daily", metadata,
+    sa.Column("ticker", sa.Text, primary_key=True),
+    sa.Column("date", sa.Text, primary_key=True),
+    sa.Column("price", sa.Float),
+    sa.Column("trailing_dps", sa.Float),
+    sa.Column("forward_dps_consensus", sa.Float),
+    sa.Column("consensus_asof", sa.Text),
+    sa.Column("vendor_yield", sa.Float),
+    sa.Column("as_of", sa.Text),
+    sa.Column("source", sa.Text),
+    sa.Column("quality", sa.Text, nullable=False, server_default="ok"),
+    sa.Column("updated_at", sa.Text, nullable=False))
+
 TABLES_IN_FK_ORDER = ["companies", "classifications", "classification_audit",
                       "daily_obs", "intraday_obs", "hsahp_daily",
                       "company_stats", "commentary_log", "alerts_log",
-                      "source_health", "constituent_log"]
+                      "source_health", "constituent_log",
+                      "div_watchlist", "dps_events", "yield_daily"]
 SERIAL_TABLES = ["companies", "classification_audit", "commentary_log",
-                 "alerts_log", "constituent_log"]
+                 "alerts_log", "constituent_log", "dps_events"]
 
 
 # --------------------------------------------------------------- connection
@@ -523,3 +563,71 @@ def set_source_health(conn, source: str, status: str, message: str = ""):
 
 def source_health_df(conn) -> pd.DataFrame:
     return conn.read_df("SELECT * FROM source_health ORDER BY source")
+
+
+# ----------------------------------------------------- dividend buy watch
+
+def upsert_watchlist(conn, rows: list[dict]):
+    """Add or update watch names. Never deletes and never deactivates —
+    a name below its threshold is exactly what the watcher monitors."""
+    conn.executemany(
+        """INSERT INTO div_watchlist (ticker, name, profile, active, added_at)
+           VALUES (:ticker,:name,:profile,:active,:added_at)
+           ON CONFLICT(ticker) DO UPDATE SET
+             name=excluded.name, profile=excluded.profile""",
+        [{"active": 1, "added_at": now_iso(), **r} for r in rows])
+
+
+def watchlist_df(conn) -> pd.DataFrame:
+    return conn.read_df("SELECT * FROM div_watchlist ORDER BY ticker")
+
+
+def insert_dps_events(conn, rows: list[dict]):
+    """Declared-dividend history; idempotent on (ticker, ex_date, amount,
+    special). Specials are stored, never mixed into trailing DPS."""
+    conn.executemany(
+        """INSERT INTO dps_events (ticker, ex_date, amount_hkd, special,
+                                   source, recorded_at)
+           VALUES (:ticker,:ex_date,:amount_hkd,:special,:source,:recorded_at)
+           ON CONFLICT(ticker, ex_date, amount_hkd, special) DO NOTHING""",
+        [{"special": 0, "recorded_at": now_iso(), **r} for r in rows])
+
+
+def dps_events_df(conn, ticker: str | None = None) -> pd.DataFrame:
+    if ticker is None:
+        return conn.read_df("SELECT * FROM dps_events ORDER BY ticker, ex_date")
+    return conn.read_df(
+        "SELECT * FROM dps_events WHERE ticker=:t ORDER BY ex_date",
+        {"t": ticker})
+
+
+def upsert_yield_daily(conn, rows: list[dict]):
+    cols = ["ticker", "date", "price", "trailing_dps",
+            "forward_dps_consensus", "consensus_asof", "vendor_yield",
+            "as_of", "source", "quality"]
+    conn.executemany(
+        f"""INSERT INTO yield_daily ({", ".join(cols)}, updated_at)
+            VALUES ({", ".join(":" + c for c in cols)}, :updated_at)
+            ON CONFLICT(ticker, date) DO UPDATE SET
+              {", ".join(c + "=excluded." + c for c in cols[2:])},
+              updated_at=excluded.updated_at""",
+        [{**{c: None for c in cols}, "updated_at": now_iso(), **r}
+         for r in rows])
+
+
+def yield_history_df(conn, ticker: str | None = None) -> pd.DataFrame:
+    if ticker is None:
+        return conn.read_df(
+            "SELECT * FROM yield_daily ORDER BY ticker, date")
+    return conn.read_df(
+        "SELECT * FROM yield_daily WHERE ticker=:t ORDER BY date",
+        {"t": ticker})
+
+
+def latest_yield_rows(conn) -> pd.DataFrame:
+    """Most recent yield_daily row per ticker."""
+    return conn.read_df(
+        """SELECT y.* FROM yield_daily y
+           JOIN (SELECT ticker, MAX(date) AS d FROM yield_daily
+                 GROUP BY ticker) m
+             ON y.ticker = m.ticker AND y.date = m.d""")
