@@ -175,11 +175,20 @@ sa.Table(
     sa.Column("quality", sa.Text, nullable=False, server_default="ok"),
     sa.Column("updated_at", sa.Text, nullable=False))
 
+sa.Table(
+    "approved_dps", metadata,
+    sa.Column("ticker", sa.Text, primary_key=True),
+    sa.Column("dps_hkd", sa.Float, nullable=False),
+    sa.Column("note", sa.Text),
+    sa.Column("updated_at", sa.Text, nullable=False),
+    sa.Column("updated_by", sa.Text))
+
 TABLES_IN_FK_ORDER = ["companies", "classifications", "classification_audit",
                       "daily_obs", "intraday_obs", "hsahp_daily",
                       "company_stats", "commentary_log", "alerts_log",
                       "source_health", "constituent_log",
-                      "div_watchlist", "dps_events", "yield_daily"]
+                      "div_watchlist", "dps_events", "yield_daily",
+                      "approved_dps"]
 SERIAL_TABLES = ["companies", "classification_audit", "commentary_log",
                  "alerts_log", "constituent_log", "dps_events"]
 
@@ -631,3 +640,22 @@ def latest_yield_rows(conn) -> pd.DataFrame:
            JOIN (SELECT ticker, MAX(date) AS d FROM yield_daily
                  GROUP BY ticker) m
              ON y.ticker = m.ticker AND y.date = m.d""")
+
+
+def set_approved_dps(conn, ticker: str, dps_hkd: float,
+                     note: str | None = None, source: str = "ui"):
+    """Manually approved annual DPS (normalised for cyclicals) — the
+    only DPS the top-up monitor ever uses."""
+    conn.execute(
+        """INSERT INTO approved_dps (ticker, dps_hkd, note, updated_at,
+                                     updated_by)
+           VALUES (:t,:d,:n,:ts,:by)
+           ON CONFLICT(ticker) DO UPDATE SET dps_hkd=excluded.dps_hkd,
+             note=excluded.note, updated_at=excluded.updated_at,
+             updated_by=excluded.updated_by""",
+        {"t": ticker, "d": float(dps_hkd), "n": note, "ts": now_iso(),
+         "by": source})
+
+
+def approved_dps_df(conn) -> pd.DataFrame:
+    return conn.read_df("SELECT * FROM approved_dps ORDER BY ticker")

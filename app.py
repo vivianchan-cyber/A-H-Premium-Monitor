@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ahmon import (alerts, auth, calc, commentary, config, db, metrics,
-                   sample_data, signals)
+                   sample_data)
 from ahmon.sources import csv_import
 
 # ---------------------------------------------------------------- palette
@@ -496,121 +496,67 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
 
 # ------------------------------------------------------ 2 Buy-level watch
 with tabs[1]:
-    st.markdown("#### 💡 Buy-level watch")
-    st.markdown("##### Dividend yield watch — HK dividend book")
+    st.markdown("#### 💡 Buy-level watch — yield-based top-up monitor")
     st.caption(
-        "A name is **in buy range** when its trailing dividend yield is "
-        "at or above its threshold: **5.0%** for stable payers, **6.0%** "
-        "for cyclical (commodity-linked) payers — the extra 1pp buffers "
-        "a dividend cut. The value-trap guard then checks the **forward** "
-        "yield: **BUY** only when both clear the bar; **CHECK** when the "
-        "threshold fired but the forward consensus is below it, missing, "
-        "or stale (>90 days) — i.e. the yield may be fictional; **WAIT** "
-        "when below the bar. Names are never dropped for being below "
-        "threshold — watching them cross is the point.")
+        "Covers the 20 Focus holdings. Each yield-based name has a "
+        "**manually approved annual DPS** and a target yield: **5.0%** "
+        "for stable payers, **6.0%** for cyclical payers — the wider "
+        "bar because cyclical earnings and dividends move with "
+        "commodity prices and the economic cycle, so approve a "
+        "*normalised* DPS for them rather than a peak-cycle payout. "
+        "**Top-up price = approved DPS ÷ target yield.** Status: "
+        "**WAIT** = price more than 5% above the top-up price · "
+        "**NEAR TOP-UP** = within 5% above it · **TOP-UP REVIEW** = at "
+        "or below it. China Life, BYD and SMIC are shown but are not "
+        "yield-based, so they get no signal.")
     from ahmon import divwatch as _divwatch
-    dw = _divwatch.build_watch_table(conn)
+    dw = _divwatch.build_topup_table(conn)
     if dw.empty:
-        st.info("Dividend watchlist is empty — an admin can seed it "
-                "below (20 A-H names now; the full ~36-name book loads "
-                "from the positions export).")
+        st.info("Watchlist empty — an admin can seed it below.")
     else:
-        show_all = st.toggle(
-            "Show all names (including no-dividend names)", value=False,
-            help="No-dividend names are monitored, not evaluated; they "
-                 "stay out of the default view. If one initiates a "
-                 "dividend it is promoted to WAIT and appears here "
-                 "automatically.")
-        dview = dw if show_all else dw[dw["Status"] != "NO POLICY"]
-        _status_css = {"BUY": "background-color: #0083002e",
-                       "CHECK": "background-color: #eda1002e"}
+        _status_css = {"TOP-UP REVIEW": "background-color: #0083002e",
+                       "NEAR TOP-UP": "background-color: #eda1002e"}
         st.dataframe(
-            dview.style.format(precision=2, na_rep="—")
+            dw.style.format(precision=2, na_rep="—")
             .map(lambda v: _status_css.get(v, ""), subset=["Status"]),
             hide_index=True, use_container_width=True, row_height=40,
-            height=min(620, 70 + 40 * len(dview)))
-        n_vendor = int((dw["Yield source"] == "vendor_yield").sum())
-        if n_vendor:
-            st.caption(
-                f"⚠️ Interim data: {n_vendor} names currently use the "
-                "vendor yield field (Eastmoney) as the trailing yield — "
-                "the declared-dividend history feed (which computes DPS "
-                "properly and excludes specials) is the next build step. "
-                "No forward-consensus source is wired yet, so every "
-                "in-range name shows CHECK rather than BUY: that is the "
-                "guard being conservative, not a bug.")
+            height=min(620, 70 + 40 * len(dw)))
+        n_unset = int((dw["Status"] == "SET DPS").sum())
+        if n_unset:
+            st.caption(f"✏️ {n_unset} yield-based names still need an "
+                       "approved annual DPS — until it is set, no "
+                       "status can be computed. Admins can set them "
+                       "below (or via `python -m ahmon.divwatch "
+                       "set-dps`).")
     if IS_ADMIN:
-        if st.button("Seed watchlist + refresh interim yields"):
+        st.markdown("##### Approve / edit annual DPS")
+        st.caption("The monitor only ever uses this manually approved "
+                   "figure — never a vendor yield or the latest "
+                   "trailing payout. Every save records who and when.")
+        yb = dw[dw["Target yield (%)"].notna()] if not dw.empty else dw
+        if not yb.empty:
+            c1, c2, c3 = st.columns([2, 1, 1])
+            pick_t = c1.selectbox(
+                "Company", list(yb["Company"] + "  (" + yb["Ticker"] + ")"),
+                key="dps_pick")
+            _ticker = pick_t.rsplit("(", 1)[1].rstrip(")")
+            _cur = yb.set_index("Ticker")["Approved DPS (HKD)"].get(_ticker)
+            _new = c2.number_input(
+                "Annual DPS (HKD)", min_value=0.0, step=0.01,
+                value=float(_cur) if pd.notna(_cur) else 0.0,
+                format="%.4f", key="dps_val")
+            if c3.button("Save DPS", type="primary"):
+                if _new > 0:
+                    db.set_approved_dps(conn, _ticker, _new,
+                                        source=f"dashboard:{user['email']}")
+                    st.success(f"{_ticker}: approved DPS = {_new:.4f} HKD")
+                    st.rerun()
+                else:
+                    st.warning("DPS must be greater than zero.")
+        if st.button("Seed / update watchlist from CSV"):
             r = _divwatch.seed_watchlist(conn)
-            n = _divwatch.bridge_from_monitor(conn)
-            st.success(f"{r['total']} names on the watchlist · "
-                       f"{n} interim yield rows written")
+            st.success(f"{r['total']} names on the watchlist")
             st.rerun()
-    st.divider()
-    st.markdown("##### A–H premium reversion screen (original signal)")
-    watch = signals.buy_watch(table)
-    if watch.empty:
-        st.info("No company currently meets the buy-level screen "
-                "(thresholds in `ahmon/config.py`).")
-    else:
-        watch_cols = [c for c in watch.columns if c != "Why flagged"]
-        st.dataframe(
-            watch[watch_cols], hide_index=True, use_container_width=True,
-            height=min(420, 60 + 35 * len(watch)),
-            column_config={
-                **{c: st.column_config.NumberColumn(format="%.2f")
-                   for c in watch_cols
-                   if watch[c].dtype.kind in "fi"},
-                "H Price (HKD)": st.column_config.NumberColumn(
-                    format="%.2f",
-                    help="Price of the Hong Kong (H) listing, in HK "
-                         "dollars."),
-                "A Price (CNY)": st.column_config.NumberColumn(
-                    format="%.2f",
-                    help="Price of the mainland (A) listing, in yuan "
-                         "(CNY)."),
-                "FX (HKD per 1 CNY)": st.column_config.NumberColumn(
-                    format="%.3f",
-                    help="Exchange rate, direction matters: this is HK "
-                         "dollars per 1 yuan (≈1.16, i.e. ¥1 ≈ "
-                         "HK$1.16). The A price is multiplied by this "
-                         "to express it in HK dollars before comparing "
-                         "with the H price."),
-                "Premium calc (%)": st.column_config.NumberColumn(
-                    format="%.2f",
-                    help="How much more the A share costs than the H "
-                         "share, computed by this dashboard:  "
-                         "(A price × HKD-per-CNY ÷ H price − 1) × 100.  "
-                         "Example: (¥10.00 × 1.16 ÷ HK$5.80 − 1) × 100 "
-                         "= +100%."),
-                "H discount to A (%)": st.column_config.NumberColumn(
-                    format="%.2f",
-                    help=COLUMN_HELP["H discount to A (%)"]),
-                "H upside to 5y median (%)": st.column_config.NumberColumn(
-                    format="%.2f",
-                    help=COLUMN_HELP["H upside to 5y median (%)"]),
-            })
-        st.markdown("**Why each company is flagged:**")
-        for _, r in watch.iterrows():
-            st.markdown(f"- **{r['Company']}** ({r['H Ticker']} · "
-                        f"{r['Name (ZH)']}): {r['Why flagged']}")
-    st.caption(
-        "**How this list is built — automatic rules, not investment "
-        "advice.** A company appears here only when all three are true: "
-        f"**(1)** its H share is unusually cheap next to its own A share "
-        f"— the price gap is in the widest "
-        f"{100 - config.SIGNAL_MIN_5Y_PERCENTILE:.0f}% of that company's "
-        f"last 5 years; **(2)** the H share would gain at least "
-        f"{config.SIGNAL_MIN_H_UPSIDE_PCT:.0f}% just from that gap going "
-        f"back to the company's own normal level; **(3)** it passes at "
-        f"least {config.SIGNAL_MIN_QUALITY_HITS} of 3 quality checks — "
-        f"dividend at least {config.SIGNAL_MIN_H_DIV_YIELD:.0f}%, price "
-        f"no more than {config.SIGNAL_MAX_H_PE:.0f}× yearly earnings, "
-        f"company worth at least "
-        f"HK${config.SIGNAL_MIN_H_MKTCAP_HKD / 1e9:.0f}bn. Companies "
-        "with out-of-date prices never appear. Every flagged name is "
-        "also recorded once per day in the Alerts tab. An admin can "
-        "adjust these rules.")
 
 # --------------------------------------------------------- 1 Stock Monitor
 with tabs[0]:

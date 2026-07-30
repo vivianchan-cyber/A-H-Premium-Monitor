@@ -1,5 +1,5 @@
-"""Dividend buy-level watch: classifier branches (especially CHECK),
-trailing-DPS windowing/specials, distance sign, seed semantics."""
+"""Yield-based top-up monitor: top-up arithmetic, status boundaries,
+manual DPS approval, not-yield-based names, seed semantics."""
 
 from __future__ import annotations
 
@@ -9,148 +9,108 @@ import pytest
 from ahmon import db, divwatch
 
 
-class TestClassifier:
-    def test_buy_needs_both_yields_over_threshold(self):
-        s, why = divwatch.classify("stable", 5.6, 5.2, 10)
-        assert s == "BUY" and "5.60%" in why
+class TestArithmetic:
+    def test_topup_price(self):
+        # DPS 0.50 at a 5% target → top-up price 10.00
+        assert divwatch.topup_price(0.50, 5.0) == pytest.approx(10.0)
+        # cyclical: same DPS at 6% → lower entry price
+        assert divwatch.topup_price(0.50, 6.0) == pytest.approx(8.3333,
+                                                                abs=1e-3)
 
-    def test_check_when_forward_below_threshold(self):
-        s, why = divwatch.classify("stable", 6.5, 4.4, 10)
-        assert s == "CHECK"
-        assert "expects a cut" in why
+    def test_status_boundaries(self):
+        # top-up price 10.00
+        assert divwatch.classify_topup(10.60, 10.0)[0] == "WAIT"      # +6%
+        s, d = divwatch.classify_topup(10.50, 10.0)                   # +5%
+        assert s == "NEAR TOP-UP" and d == pytest.approx(5.0)
+        assert divwatch.classify_topup(10.01, 10.0)[0] == "NEAR TOP-UP"
+        s, d = divwatch.classify_topup(10.0, 10.0)                    # 0%
+        assert s == "TOP-UP REVIEW" and d == pytest.approx(0.0)
+        assert divwatch.classify_topup(9.0, 10.0)[0] == "TOP-UP REVIEW"
 
-    def test_check_when_consensus_missing(self):
-        s, why = divwatch.classify("cyclical", 7.0, None, None)
-        assert s == "CHECK"
-        assert "no forward consensus" in why
-
-    def test_check_when_consensus_stale(self):
-        s, why = divwatch.classify("cyclical", 7.0, 6.5, 120)
-        assert s == "CHECK"
-        assert "120 days" in why
-
-    def test_wait_below_threshold(self):
-        s, _ = divwatch.classify("stable", 4.2, 5.5, 10)
-        assert s == "WAIT"
-
-    def test_cyclical_threshold_is_six(self):
-        assert divwatch.classify("cyclical", 5.5, 6.5, 10)[0] == "WAIT"
-        assert divwatch.classify("stable", 5.5, 6.5, 10)[0] == "BUY"
-
-    def test_no_dividend_is_no_policy(self):
-        s, _ = divwatch.classify("no_dividend", None, None, None)
-        assert s == "NO POLICY"
-
-    def test_no_dividend_that_starts_paying_promotes_to_wait(self):
-        s, why = divwatch.classify("no_dividend", 1.2, None, None)
-        assert s == "WAIT" and "initiated" in why
-
-    def test_no_data_is_explicit_not_wait(self):
-        s, _ = divwatch.classify("stable", None, None, None)
-        assert s == "NO DATA"
+    def test_distance_sign(self):
+        _, d = divwatch.classify_topup(12.0, 10.0)
+        assert d == pytest.approx(20.0)      # 20% above top-up price
+        _, d = divwatch.classify_topup(8.0, 10.0)
+        assert d == pytest.approx(-20.0)     # 20% below
 
 
-class TestTrailingDps:
-    def events(self, rows):
-        return pd.DataFrame(rows, columns=["ticker", "ex_date",
-                                           "amount_hkd", "special"])
-
-    def test_sums_regulars_in_365d_window(self):
-        ev = self.events([
-            ("1.HK", "2026-03-01", 0.30, 0),
-            ("1.HK", "2025-09-01", 0.25, 0),
-            ("1.HK", "2025-06-01", 0.20, 0),   # 423 days back — out
-        ])
-        assert divwatch.trailing_dps(ev, "2026-07-28") == pytest.approx(0.55)
-
-    def test_specials_excluded(self):
-        ev = self.events([
-            ("1.HK", "2026-03-01", 0.30, 0),
-            ("1.HK", "2026-03-01", 1.00, 1),   # capital return
-        ])
-        assert divwatch.trailing_dps(ev, "2026-07-28") == pytest.approx(0.30)
-
-    def test_none_when_no_events(self):
-        assert divwatch.trailing_dps(self.events([]), "2026-07-28") is None
+class TestShippedList:
+    def test_twenty_names_with_expected_profiles(self):
+        lst = pd.read_csv(divwatch.WATCHLIST_CSV)
+        assert len(lst) == 20 and lst["ticker"].is_unique
+        counts = lst["profile"].value_counts()
+        assert counts["stable"] == 9
+        assert counts["cyclical"] == 8
+        assert counts["not_yield_based"] == 3
+        by = lst.set_index("ticker")["profile"]
+        assert by["2628.HK"] == "not_yield_based"      # China Life
+        assert by["338.HK"] == "cyclical"              # Shanghai Petrochem
+        assert by["38.HK"] == "cyclical"               # First Tractor
 
 
-class TestDistance:
-    def test_in_range_shows_positive_headroom(self):
-        # dps 0.60, threshold 5% → threshold price 12.0; price 10 → +20%
-        d = divwatch.distance_to_threshold_pct(10.0, 0.60, 5.0)
-        assert d == pytest.approx(20.0)
-
-    def test_below_range_is_negative(self):
-        # price 15 → must fall 20% to reach 12.0
-        d = divwatch.distance_to_threshold_pct(15.0, 0.60, 5.0)
-        assert d == pytest.approx(-20.0)
-
-    def test_none_without_dps(self):
-        assert divwatch.distance_to_threshold_pct(10.0, None, 5.0) is None
-
-
-class TestSeedAndTable:
+class TestTable:
     @pytest.fixture
     def conn(self, tmp_path):
         c = db.connect(tmp_path / "t.db")
+        divwatch.seed_watchlist(c)
+        # price rows for a few names via the normal company path
+        for name, h, a, price in [
+            ("ICBC", "1398.HK", "601398.SS", 7.0),
+            ("CNOOC", "883.HK", "600938.SS", 24.0),
+            ("BYD", "1211.HK", "002594.SZ", 90.0),
+        ]:
+            cid = db.upsert_company(c, name, h, a, "Financials")
+            db.insert_daily(c, [{
+                "company_id": cid, "date": db.now_iso()[:10],
+                "a_close": 1.0, "h_close": price, "fx": 1.1,
+                "premium_calc": 0.0, "premium_src": 0.0,
+                "a_div_yield": None, "h_div_yield": None,
+                "quality": "live", "updated_at": db.now_iso()}])
         yield c
         c.close()
 
-    def test_seed_idempotent_and_never_drops(self, conn, tmp_path):
-        r1 = divwatch.seed_watchlist(conn)
-        assert r1["total"] == 20 and len(r1["added"]) == 20
-        # a smaller CSV must never remove names
+    def test_statuses_and_manual_dps(self, conn):
+        # ICBC: DPS 0.36 @5% → top-up 7.20; price 7.00 ≤ 7.20 → REVIEW
+        db.set_approved_dps(conn, "1398.HK", 0.36, source="test")
+        # CNOOC: DPS 1.20 @6% → top-up 20.0; price 24 = +20% → WAIT
+        db.set_approved_dps(conn, "883.HK", 1.20, source="test")
+        t = divwatch.build_topup_table(conn).set_index("Ticker")
+        assert t.loc["1398.HK", "Status"] == "TOP-UP REVIEW"
+        assert t.loc["1398.HK", "Top-up price (HKD)"] == pytest.approx(7.2)
+        assert t.loc["1398.HK", "Current yield (%)"] == \
+            pytest.approx(0.36 / 7.0 * 100)
+        assert t.loc["883.HK", "Status"] == "WAIT"
+        assert t.loc["883.HK", "Distance to top-up (%)"] == \
+            pytest.approx(20.0)
+        # review rows sort first
+        assert list(t["Status"])[0] == "TOP-UP REVIEW"
+
+    def test_unset_dps_is_explicit(self, conn):
+        t = divwatch.build_topup_table(conn).set_index("Ticker")
+        assert t.loc["1398.HK", "Status"] == "SET DPS"
+        assert pd.isna(t.loc["1398.HK", "Top-up price (HKD)"])
+
+    def test_not_yield_based_gets_no_signal(self, conn):
+        db.set_approved_dps(conn, "1211.HK", 1.0, source="test")
+        t = divwatch.build_topup_table(conn).set_index("Ticker")
+        # shown, priced, but no target / top-up / status even with a DPS
+        assert t.loc["1211.HK", "Status"] == "—"
+        assert pd.isna(t.loc["1211.HK", "Target yield (%)"])
+        assert pd.isna(t.loc["1211.HK", "Top-up price (HKD)"])
+        assert t.loc["1211.HK", "Price (HKD)"] == pytest.approx(90.0)
+
+    def test_dps_update_overwrites_and_stamps(self, conn):
+        db.set_approved_dps(conn, "1398.HK", 0.30, source="a@x")
+        db.set_approved_dps(conn, "1398.HK", 0.36, source="b@x")
+        d = db.approved_dps_df(conn).set_index("ticker")
+        assert d.loc["1398.HK", "dps_hkd"] == pytest.approx(0.36)
+        assert d.loc["1398.HK", "updated_by"] == "b@x"
+
+    def test_seed_updates_profiles_never_drops(self, conn, tmp_path):
         small = tmp_path / "small.csv"
         pd.DataFrame({"ticker": ["883.HK"], "name": ["CNOOC"],
-                      "profile": ["cyclical"]}).to_csv(small, index=False)
-        r2 = divwatch.seed_watchlist(conn, small)
-        assert r2["total"] == 20 and r2["added"] == []
-
-    def test_seed_rejects_unknown_profile(self, conn, tmp_path):
-        bad = tmp_path / "bad.csv"
-        pd.DataFrame({"ticker": ["1.HK"], "name": ["X"],
-                      "profile": ["growth"]}).to_csv(bad, index=False)
-        with pytest.raises(ValueError, match="unknown profiles"):
-            divwatch.seed_watchlist(conn, bad)
-
-    def test_table_from_manual_rows_classifies_and_sorts(self, conn):
-        divwatch.seed_watchlist(conn)
-        today = db.now_iso()[:10]
-        db.insert_dps_events(conn, [
-            {"ticker": "941.HK", "ex_date": today, "amount_hkd": 4.60,
-             "source": "manual"},
-            {"ticker": "857.HK", "ex_date": today, "amount_hkd": 0.50,
-             "source": "manual"},
-        ])
-        db.upsert_yield_daily(conn, [
-            # China Mobile: 4.60/80 = 5.75% trailing, forward 5.5% → BUY
-            {"ticker": "941.HK", "date": today, "price": 80.0,
-             "forward_dps_consensus": 4.40, "consensus_asof": today,
-             "as_of": today, "source": "manual", "quality": "ok"},
-            # PetroChina (cyclical): 0.50/6 = 8.3% but no consensus → CHECK
-            {"ticker": "857.HK", "date": today, "price": 6.0,
-             "as_of": today, "source": "manual", "quality": "ok"},
-        ])
-        t = divwatch.build_watch_table(conn).set_index("Ticker")
-        assert t.loc["941.HK", "Status"] == "BUY"
-        assert t.loc["857.HK", "Status"] == "CHECK"
-        assert t.loc["1211.HK", "Status"] == "NO POLICY"     # BYD
-        assert t.loc["1398.HK", "Status"] == "NO DATA"       # ICBC, no row
-        # sort: BUY first, then CHECK, WAIT/NO POLICY/NO DATA after
-        statuses = list(t["Status"])
-        assert statuses[0] == "BUY" and statuses[1] == "CHECK"
-        # days in range counts stored in-range days
-        assert t.loc["941.HK", "Days in range"] == 1
-
-    def test_vendor_fallback_is_labelled(self, conn):
-        divwatch.seed_watchlist(conn)
-        today = db.now_iso()[:10]
-        db.upsert_yield_daily(conn, [
-            {"ticker": "939.HK", "date": today, "price": 8.0,
-             "vendor_yield": 6.1, "as_of": today,
-             "source": "vendor_yield", "quality": "ok"},
-        ])
-        t = divwatch.build_watch_table(conn).set_index("Ticker")
-        assert t.loc["939.HK", "Status"] == "CHECK"   # in range, no fwd
-        assert t.loc["939.HK", "Yield source"] == "vendor_yield"
-        assert t.loc["939.HK", "Trailing yield (%)"] == pytest.approx(6.1)
+                      "profile": ["stable"]}).to_csv(small, index=False)
+        r = divwatch.seed_watchlist(conn, small)
+        w = db.watchlist_df(conn).set_index("ticker")
+        assert r["total"] == 20                    # nothing dropped
+        assert w.loc["883.HK", "profile"] == "stable"   # updated
