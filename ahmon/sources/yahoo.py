@@ -163,6 +163,41 @@ class YahooSource(Source):
             rows.append(row)
         return pd.DataFrame(rows)
 
+    def fetch_dividends(self, h_ticker: str, years: int = 2) -> pd.DataFrame:
+        """Declared cash dividends for an H share: DataFrame with columns
+        ex_date (YYYY-MM-DD) and amount_hkd, oldest first. Empty frame =
+        no dividends in the window (a real observation, not a failure).
+        Yahoo does not label special dividends — callers treating these
+        amounts as ordinary DPS should say so visibly."""
+        symbol = tickers.yahoo_h_symbol(h_ticker)
+
+        def call():
+            r = self.session.get(CHART_URL.format(symbol=symbol),
+                                 params={"range": f"{years}y",
+                                         "interval": "1mo",
+                                         "events": "div"}, timeout=30)
+            r.raise_for_status()
+            return r.json()
+
+        payload = with_retries(call)
+        try:
+            res = payload["chart"]["result"][0]
+            if res["meta"]["currency"] != "HKD":
+                raise SchemaChangeError(
+                    f"{h_ticker}: dividends quoted in "
+                    f"{res['meta']['currency']!r}, expected HKD")
+            divs = (res.get("events") or {}).get("dividends") or {}
+        except (KeyError, IndexError, TypeError) as e:
+            raise SchemaChangeError(
+                f"yahoo dividends {symbol}: unexpected payload ({e})") from e
+        rows = [{"ex_date": datetime.fromtimestamp(
+                    int(v["date"]), tz=config.TZ).strftime("%Y-%m-%d"),
+                 "amount_hkd": float(v["amount"])}
+                for v in divs.values()]
+        time.sleep(REQUEST_GAP_S)
+        return (pd.DataFrame(rows, columns=["ex_date", "amount_hkd"])
+                .sort_values("ex_date").reset_index(drop=True))
+
     def fetch_english_name(self, h_ticker: str) -> str | None:
         """English company name from the H-share quote metadata."""
         return self._chart_meta(tickers.yahoo_h_symbol(h_ticker))["name_en"]

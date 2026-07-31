@@ -498,65 +498,96 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
 with tabs[1]:
     st.markdown("#### 💡 Buy-level watch — yield-based top-up monitor")
     st.caption(
-        "Covers the 20 Focus holdings. Each yield-based name has a "
-        "**manually approved annual DPS** and a target yield: **5.0%** "
-        "for stable payers, **6.0%** for cyclical payers — the wider "
-        "bar because cyclical earnings and dividends move with "
-        "commodity prices and the economic cycle, so approve a "
-        "*normalised* DPS for them rather than a peak-cycle payout. "
-        "**Top-up price = approved DPS ÷ target yield.** Status: "
+        "Covers the 20 Focus holdings. Target yields: **5.0%** for "
+        "stable payers, **6.0%** for cyclical payers (wider because "
+        "cyclical earnings and dividends move with commodity prices "
+        "and the economic cycle). **Top-up price = DPS ÷ target "
+        "yield.** Each name's DPS defaults to its **trailing 12-month "
+        "declared dividends**; a **manually normalised DPS** can "
+        "override it (recommended for cyclicals near a cycle peak) — "
+        "the *DPS basis* column shows which is in use. Status: "
         "**WAIT** = price more than 5% above the top-up price · "
         "**NEAR TOP-UP** = within 5% above it · **TOP-UP REVIEW** = at "
-        "or below it. China Life, BYD and SMIC are shown but are not "
-        "yield-based, so they get no signal.")
+        "or below it · **DATA REVIEW** = dividend data missing. China "
+        "Life, BYD and SMIC are shown but are not yield-based.")
     from ahmon import divwatch as _divwatch
     dw = _divwatch.build_topup_table(conn)
     if dw.empty:
-        st.info("Watchlist empty — an admin can seed it below.")
+        st.info("Watchlist empty — an admin can seed it in the admin "
+                "section below.")
     else:
         _status_css = {"TOP-UP REVIEW": "background-color: #0083002e",
-                       "NEAR TOP-UP": "background-color: #eda1002e"}
+                       "NEAR TOP-UP": "background-color: #eda1002e",
+                       "DATA REVIEW": "background-color: #e3494820"}
         st.dataframe(
             dw.style.format(precision=2, na_rep="—")
             .map(lambda v: _status_css.get(v, ""), subset=["Status"]),
             hide_index=True, use_container_width=True, row_height=40,
             height=min(620, 70 + 40 * len(dw)))
-        n_unset = int((dw["Status"] == "SET DPS").sum())
-        if n_unset:
-            st.caption(f"✏️ {n_unset} yield-based names still need an "
-                       "approved annual DPS — until it is set, no "
-                       "status can be computed. Admins can set them "
-                       "below (or via `python -m ahmon.divwatch "
-                       "set-dps`).")
+        n_review = int((dw["Status"] == "DATA REVIEW").sum())
+        n_manual = int((dw["DPS basis"] == _divwatch.BASIS_MANUAL).sum())
+        bits = []
+        if n_review:
+            bits.append(f"{n_review} names need a dividend-history "
+                        "fetch or a manual DPS")
+        if n_manual:
+            bits.append(f"{n_manual} names use a manual normalised DPS")
+        st.caption(("Trailing DPS sums the last 12 months of declared "
+                    "dividends (Yahoo does not label special payouts — "
+                    "override any figure that looks one-off). ")
+                   + (" · ".join(bits) + "." if bits else ""))
     if IS_ADMIN:
-        st.markdown("##### Approve / edit annual DPS")
-        st.caption("The monitor only ever uses this manually approved "
-                   "figure — never a vendor yield or the latest "
-                   "trailing payout. Every save records who and when.")
-        yb = dw[dw["Target yield (%)"].notna()] if not dw.empty else dw
-        if not yb.empty:
-            c1, c2, c3 = st.columns([2, 1, 1])
-            pick_t = c1.selectbox(
-                "Company", list(yb["Company"] + "  (" + yb["Ticker"] + ")"),
-                key="dps_pick")
-            _ticker = pick_t.rsplit("(", 1)[1].rstrip(")")
-            _cur = yb.set_index("Ticker")["Approved DPS (HKD)"].get(_ticker)
-            _new = c2.number_input(
-                "Annual DPS (HKD)", min_value=0.0, step=0.01,
-                value=float(_cur) if pd.notna(_cur) else 0.0,
-                format="%.4f", key="dps_val")
-            if c3.button("Save DPS", type="primary"):
-                if _new > 0:
-                    db.set_approved_dps(conn, _ticker, _new,
-                                        source=f"dashboard:{user['email']}")
-                    st.success(f"{_ticker}: approved DPS = {_new:.4f} HKD")
-                    st.rerun()
+        with st.expander("🛠️ Admin — dividend data & DPS overrides"):
+            c1, c2 = st.columns(2)
+            if c1.button("Fetch declared dividends (Yahoo, ~30 s)"):
+                with st.spinner("Fetching dividend history…"):
+                    r = _divwatch.refresh_dps(conn)
+                st.success(f"{r['stored']} dividends stored · failures: "
+                           f"{r['failed'] or 'none'}")
+                st.rerun()
+            if c2.button("Seed / update watchlist from CSV"):
+                r = _divwatch.seed_watchlist(conn)
+                st.success(f"{r['total']} names on the watchlist")
+                st.rerun()
+            st.markdown("**Manual normalised DPS (override)** — wins "
+                        "over the trailing figure; use it where a "
+                        "trailing payout looks peak-cycle or one-off. "
+                        "Every save records who and when.")
+            if not dw.empty:
+                _needs = dw[(dw["Status"] == "DATA REVIEW")
+                            | (dw["DPS basis"] == _divwatch.BASIS_MANUAL)]
+                _show_all = st.checkbox(
+                    "Choose from all yield-based names", value=_needs.empty,
+                    help="Unticked: only names needing review or already "
+                         "overridden.")
+                _pool = dw[dw["Target yield (%)"].notna()] if _show_all \
+                    else _needs
+                if _pool.empty:
+                    st.caption("Nothing needs review right now.")
                 else:
-                    st.warning("DPS must be greater than zero.")
-        if st.button("Seed / update watchlist from CSV"):
-            r = _divwatch.seed_watchlist(conn)
-            st.success(f"{r['total']} names on the watchlist")
-            st.rerun()
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    pick_t = c1.selectbox(
+                        "Company",
+                        list(_pool["Company"] + "  (" + _pool["Ticker"]
+                             + ")"), key="dps_pick")
+                    _ticker = pick_t.rsplit("(", 1)[1].rstrip(")")
+                    _row = dw.set_index("Ticker").loc[_ticker]
+                    _cur = _row["DPS (HKD)"]
+                    _new = c2.number_input(
+                        "Annual DPS (HKD)", min_value=0.0, step=0.01,
+                        value=float(_cur) if pd.notna(_cur) else 0.0,
+                        format="%.4f", key="dps_val",
+                        help="Current basis: " + str(_row["DPS basis"]))
+                    if c3.button("Save override", type="primary"):
+                        if _new > 0:
+                            db.set_approved_dps(
+                                conn, _ticker, _new,
+                                source=f"dashboard:{user['email']}")
+                            st.success(f"{_ticker}: manual normalised "
+                                       f"DPS = {_new:.4f} HKD")
+                            st.rerun()
+                        else:
+                            st.warning("DPS must be greater than zero.")
 
 # --------------------------------------------------------- 1 Stock Monitor
 with tabs[0]:

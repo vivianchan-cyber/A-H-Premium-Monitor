@@ -85,10 +85,37 @@ class TestTable:
         # review rows sort first
         assert list(t["Status"])[0] == "TOP-UP REVIEW"
 
-    def test_unset_dps_is_explicit(self, conn):
+    def test_no_dividend_data_is_data_review(self, conn):
         t = divwatch.build_topup_table(conn).set_index("Ticker")
-        assert t.loc["1398.HK", "Status"] == "SET DPS"
+        assert t.loc["1398.HK", "Status"] == "DATA REVIEW"
         assert pd.isna(t.loc["1398.HK", "Top-up price (HKD)"])
+        assert t.loc["1398.HK", "DPS basis"] == "—"
+
+    def test_trailing_dps_is_the_default_basis(self, conn):
+        today = db.now_iso()[:10]
+        db.insert_dps_events(conn, [
+            {"ticker": "1398.HK", "ex_date": today, "amount_hkd": 0.20,
+             "source": "yahoo:events"},
+            {"ticker": "1398.HK", "ex_date": today, "amount_hkd": 0.16,
+             "source": "yahoo:events"},
+        ])
+        t = divwatch.build_topup_table(conn).set_index("Ticker")
+        # 0.36 trailing @5% → top-up 7.20; price 7.00 → REVIEW, no manual
+        assert t.loc["1398.HK", "DPS basis"] == divwatch.BASIS_TRAILING
+        assert t.loc["1398.HK", "DPS (HKD)"] == pytest.approx(0.36)
+        assert t.loc["1398.HK", "Status"] == "TOP-UP REVIEW"
+
+    def test_manual_override_beats_trailing(self, conn):
+        today = db.now_iso()[:10]
+        db.insert_dps_events(conn, [
+            {"ticker": "883.HK", "ex_date": today, "amount_hkd": 2.00,
+             "source": "yahoo:events"}])       # peak-cycle payout
+        db.set_approved_dps(conn, "883.HK", 1.20, source="test")
+        t = divwatch.build_topup_table(conn).set_index("Ticker")
+        assert t.loc["883.HK", "DPS basis"] == divwatch.BASIS_MANUAL
+        assert t.loc["883.HK", "DPS (HKD)"] == pytest.approx(1.20)
+        # normalised 1.20 @6% → top-up 20.0; price 24 → WAIT
+        assert t.loc["883.HK", "Status"] == "WAIT"
 
     def test_not_yield_based_gets_no_signal(self, conn):
         db.set_approved_dps(conn, "1211.HK", 1.0, source="test")
