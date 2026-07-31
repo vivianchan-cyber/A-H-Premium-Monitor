@@ -524,10 +524,20 @@ with tabs[1]:
             _divwatch.ST_DATA: "background-color: #e3494820"}
         _basis_css = {
             _divwatch.BASIS_TRAILING_FLAG: "background-color: #eda1002e"}
+        # Streamlit renders null numeric cells as literal 'None' whatever
+        # the Styler's na_rep says — so numbers are pre-formatted to
+        # strings ('—' for missing) and re-right-aligned via cell CSS.
+        _num_cols = ["Price (HKD)", "DPS (HKD)", "Current yield (%)",
+                     "Target yield (%)", "Top-up price (HKD)"]
+        disp = dw.copy()
+        for _c in _num_cols:
+            disp[_c] = dw[_c].map(
+                lambda v: "—" if pd.isna(v) else f"{v:,.2f}")
         st.dataframe(
-            dw.style.format(precision=2, na_rep="—")
+            disp.style
             .map(lambda v: _status_css.get(v, ""), subset=["Status"])
-            .map(lambda v: _basis_css.get(v, ""), subset=["DPS basis"]),
+            .map(lambda v: _basis_css.get(v, ""), subset=["DPS basis"])
+            .map(lambda _: "text-align: right", subset=_num_cols),
             hide_index=True, use_container_width=True, row_height=40,
             height=min(620, 70 + 40 * len(dw)),
             column_config={
