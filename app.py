@@ -537,6 +537,9 @@ with tabs[1]:
             disp.style
             .map(lambda v: _status_css.get(v, ""), subset=["Status"])
             .map(lambda v: _basis_css.get(v, ""), subset=["DPS basis"])
+            # the number you read first — same standing highlight as the
+            # Stock Monitor focus columns
+            .map(lambda _: HIGHLIGHT_CSS, subset=["Current yield (%)"])
             .map(lambda _: "text-align: right", subset=_num_cols),
             hide_index=True, use_container_width=True, row_height=40,
             height=min(620, 70 + 40 * len(dw)),
