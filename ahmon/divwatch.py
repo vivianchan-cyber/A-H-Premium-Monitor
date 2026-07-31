@@ -20,12 +20,13 @@ Arithmetic:
     distance      = (price / top-up price − 1) × 100
 
 Statuses:
-    WAIT           price more than 5% above the top-up price
-    NEAR TOP-UP    price within 5% above the top-up price
-    TOP-UP REVIEW  price at or below the top-up price
-    DATA REVIEW    yield-based name whose DPS cannot be established —
-                   no manual override and no dividend history stored
-    —              not yield-based (listed, no signal)
+    WAIT              price more than 5% above the top-up price
+    NEAR RANGE        price within 5% above the top-up price
+    IN RANGE — REVIEW price at or below the top-up price: the yield
+                      threshold is met, but dividend sustainability
+                      still requires the owner's review
+    DATA REVIEW       yield-based name whose DPS cannot be established
+    —                 not yield-based (listed, no signal)
 
 Caveat, stated rather than hidden: Yahoo's dividend events do not label
 special dividends, so an unusual one-off payout inflates the trailing
@@ -60,9 +61,18 @@ TRAILING_WINDOW_DAYS = 365
 
 BASIS_MANUAL = "Manual normalised DPS"
 BASIS_TRAILING = "Trailing 12m DPS"
+BASIS_TRAILING_FLAG = "Trailing DPS — review special"
 
-STATUS_ORDER = {"TOP-UP REVIEW": 0, "NEAR TOP-UP": 1, "WAIT": 2,
-                "DATA REVIEW": 3, "—": 4}
+ST_REVIEW = "IN RANGE — REVIEW"
+ST_NEAR = "NEAR RANGE"
+ST_WAIT = "WAIT"
+ST_DATA = "DATA REVIEW"
+
+STATUS_ORDER = {ST_REVIEW: 0, ST_NEAR: 1, ST_WAIT: 2, ST_DATA: 3, "—": 4}
+
+# A trailing total this far above the previous 12 months is the shape a
+# special / one-off payment leaves in the history.
+UNUSUAL_PAYOUT_RATIO = 1.6
 
 # Profile names stored by earlier versions of the watchlist. The table
 # must render from whatever the database holds — a re-seed fixes the
@@ -139,10 +149,39 @@ def classify_topup(price: float, topup: float) -> tuple[str, float]:
     dist = (price / topup - 1.0) * 100.0
     eps = 1e-9                       # float-safe boundary handling
     if dist <= eps:
-        return "TOP-UP REVIEW", dist
+        return ST_REVIEW, dist
     if dist <= NEAR_BAND_PCT + eps:
-        return "NEAR TOP-UP", dist
-    return "WAIT", dist
+        return ST_NEAR, dist
+    return ST_WAIT, dist
+
+
+def position_text(dist: float | None) -> str | None:
+    """Plain-language position vs the top-up price: '23.5% below' /
+    '2.4% above' / 'at top-up price' — below is where buying happens,
+    so it is never shown as a negative number."""
+    if dist is None or pd.isna(dist):
+        return None
+    if abs(dist) < 0.05:
+        return "at top-up price"
+    return f"{abs(dist):.1f}% {'below' if dist < 0 else 'above'}"
+
+
+def unusual_payout(events: pd.DataFrame, asof: str) -> bool:
+    """True when the trailing 12m total is more than
+    UNUSUAL_PAYOUT_RATIO x the previous 12m total — likely a special or
+    unusual payment inflating the trailing figure. Needs two years of
+    history; a name without a prior-year record is never flagged."""
+    if events is None or events.empty:
+        return False
+    ev = events[events["special"] == 0]
+    d = pd.to_datetime(ev["ex_date"])
+    now = pd.Timestamp(asof)
+    cur = float(ev[(d > now - pd.Timedelta(days=365))
+                   & (d <= now)]["amount_hkd"].sum())
+    prev = float(ev[(d > now - pd.Timedelta(days=730))
+                    & (d <= now - pd.Timedelta(days=365))]
+                 ["amount_hkd"].sum())
+    return prev > 0 and cur > UNUSUAL_PAYOUT_RATIO * prev
 
 
 def build_topup_table(conn) -> pd.DataFrame:
@@ -173,20 +212,21 @@ def build_topup_table(conn) -> pd.DataFrame:
                 asof = str(obs.iloc[0]["updated_at"])[:16].replace("T", " ")
         target = TARGET_YIELD.get(profile)
 
+        ev = all_events[all_events["ticker"] == t] \
+            if not all_events.empty else all_events
         dps, basis = None, None
         if t in manual.index:
             dps, basis = float(manual.loc[t, "dps_hkd"]), BASIS_MANUAL
         else:
-            ev = all_events[all_events["ticker"] == t] \
-                if not all_events.empty else all_events
             dps = trailing_dps(ev, today)
             if dps is not None:
-                basis = BASIS_TRAILING
+                basis = BASIS_TRAILING_FLAG if unusual_payout(ev, today) \
+                    else BASIS_TRAILING
 
         status, dist, topup, cur_yield = "—", None, None, None
         if target is not None:                      # yield-based name
             if dps is None or price is None:
-                status = "DATA REVIEW"
+                status = ST_DATA
             else:
                 topup = topup_price(dps, target)
                 cur_yield = dps / price * 100.0
@@ -200,20 +240,20 @@ def build_topup_table(conn) -> pd.DataFrame:
             "Current yield (%)": cur_yield,
             "Target yield (%)": target,
             "Top-up price (HKD)": topup,
-            "Distance to top-up (%)": dist,
+            "Position vs top-up price": position_text(dist),
             "Status": status,
             "As of": asof,
+            "_dist": dist,
         })
     df = pd.DataFrame(out)
     for c in ["Price (HKD)", "DPS (HKD)", "Current yield (%)",
-              "Target yield (%)", "Top-up price (HKD)",
-              "Distance to top-up (%)"]:
+              "Target yield (%)", "Top-up price (HKD)"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")   # None → NaN → "—"
-    for c in ["DPS basis", "As of"]:
+    for c in ["DPS basis", "Position vs top-up price", "As of"]:
         df[c] = df[c].fillna("—")
     df["_s"] = df["Status"].map(STATUS_ORDER).fillna(9)
-    df = df.sort_values(["_s", "Distance to top-up (%)"],
-                        na_position="last").drop(columns="_s")
+    df = df.sort_values(["_s", "_dist"], na_position="last") \
+        .drop(columns=["_s", "_dist"])
     return df.reset_index(drop=True)
 
 

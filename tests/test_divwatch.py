@@ -19,19 +19,49 @@ class TestArithmetic:
 
     def test_status_boundaries(self):
         # top-up price 10.00
-        assert divwatch.classify_topup(10.60, 10.0)[0] == "WAIT"      # +6%
+        assert divwatch.classify_topup(10.60, 10.0)[0] == divwatch.ST_WAIT      # +6%
         s, d = divwatch.classify_topup(10.50, 10.0)                   # +5%
-        assert s == "NEAR TOP-UP" and d == pytest.approx(5.0)
-        assert divwatch.classify_topup(10.01, 10.0)[0] == "NEAR TOP-UP"
+        assert s == divwatch.ST_NEAR and d == pytest.approx(5.0)
+        assert divwatch.classify_topup(10.01, 10.0)[0] == divwatch.ST_NEAR
         s, d = divwatch.classify_topup(10.0, 10.0)                    # 0%
-        assert s == "TOP-UP REVIEW" and d == pytest.approx(0.0)
-        assert divwatch.classify_topup(9.0, 10.0)[0] == "TOP-UP REVIEW"
+        assert s == divwatch.ST_REVIEW and d == pytest.approx(0.0)
+        assert divwatch.classify_topup(9.0, 10.0)[0] == divwatch.ST_REVIEW
 
     def test_distance_sign(self):
         _, d = divwatch.classify_topup(12.0, 10.0)
         assert d == pytest.approx(20.0)      # 20% above top-up price
         _, d = divwatch.classify_topup(8.0, 10.0)
         assert d == pytest.approx(-20.0)     # 20% below
+
+    def test_position_text_is_plain_language(self):
+        assert divwatch.position_text(-23.48) == "23.5% below"
+        assert divwatch.position_text(2.38) == "2.4% above"
+        assert divwatch.position_text(0.0) == "at top-up price"
+        assert divwatch.position_text(None) is None
+
+
+class TestUnusualPayout:
+    def events(self, rows):
+        return pd.DataFrame(rows, columns=["ticker", "ex_date",
+                                           "amount_hkd", "special"])
+
+    def test_flags_trailing_jump_over_prior_year(self):
+        ev = self.events([
+            ("1.HK", "2026-03-01", 1.00, 0),   # trailing 12m: 1.00
+            ("1.HK", "2025-03-01", 0.50, 0),   # previous 12m: 0.50
+        ])
+        assert divwatch.unusual_payout(ev, "2026-07-31")   # 2.0x > 1.6x
+
+    def test_steady_payer_not_flagged(self):
+        ev = self.events([
+            ("1.HK", "2026-03-01", 0.55, 0),
+            ("1.HK", "2025-03-01", 0.50, 0),
+        ])
+        assert not divwatch.unusual_payout(ev, "2026-07-31")
+
+    def test_no_prior_year_never_flagged(self):
+        ev = self.events([("1.HK", "2026-03-01", 1.00, 0)])
+        assert not divwatch.unusual_payout(ev, "2026-07-31")
 
 
 class TestShippedList:
@@ -75,19 +105,19 @@ class TestTable:
         # CNOOC: DPS 1.20 @6% → top-up 20.0; price 24 = +20% → WAIT
         db.set_approved_dps(conn, "883.HK", 1.20, source="test")
         t = divwatch.build_topup_table(conn).set_index("Ticker")
-        assert t.loc["1398.HK", "Status"] == "TOP-UP REVIEW"
+        assert t.loc["1398.HK", "Status"] == divwatch.ST_REVIEW
         assert t.loc["1398.HK", "Top-up price (HKD)"] == pytest.approx(7.2)
         assert t.loc["1398.HK", "Current yield (%)"] == \
             pytest.approx(0.36 / 7.0 * 100)
-        assert t.loc["883.HK", "Status"] == "WAIT"
-        assert t.loc["883.HK", "Distance to top-up (%)"] == \
-            pytest.approx(20.0)
+        assert t.loc["883.HK", "Status"] == divwatch.ST_WAIT
+        assert t.loc["883.HK", "Position vs top-up price"] == "20.0% above"
+        assert t.loc["1398.HK", "Position vs top-up price"] == "2.8% below"
         # review rows sort first
-        assert list(t["Status"])[0] == "TOP-UP REVIEW"
+        assert list(t["Status"])[0] == divwatch.ST_REVIEW
 
     def test_no_dividend_data_is_data_review(self, conn):
         t = divwatch.build_topup_table(conn).set_index("Ticker")
-        assert t.loc["1398.HK", "Status"] == "DATA REVIEW"
+        assert t.loc["1398.HK", "Status"] == divwatch.ST_DATA
         assert pd.isna(t.loc["1398.HK", "Top-up price (HKD)"])
         assert t.loc["1398.HK", "DPS basis"] == "—"
 
@@ -103,7 +133,7 @@ class TestTable:
         # 0.36 trailing @5% → top-up 7.20; price 7.00 → REVIEW, no manual
         assert t.loc["1398.HK", "DPS basis"] == divwatch.BASIS_TRAILING
         assert t.loc["1398.HK", "DPS (HKD)"] == pytest.approx(0.36)
-        assert t.loc["1398.HK", "Status"] == "TOP-UP REVIEW"
+        assert t.loc["1398.HK", "Status"] == divwatch.ST_REVIEW
 
     def test_manual_override_beats_trailing(self, conn):
         today = db.now_iso()[:10]
@@ -115,7 +145,7 @@ class TestTable:
         assert t.loc["883.HK", "DPS basis"] == divwatch.BASIS_MANUAL
         assert t.loc["883.HK", "DPS (HKD)"] == pytest.approx(1.20)
         # normalised 1.20 @6% → top-up 20.0; price 24 → WAIT
-        assert t.loc["883.HK", "Status"] == "WAIT"
+        assert t.loc["883.HK", "Status"] == divwatch.ST_WAIT
 
     def test_not_yield_based_gets_no_signal(self, conn):
         db.set_approved_dps(conn, "1211.HK", 1.0, source="test")

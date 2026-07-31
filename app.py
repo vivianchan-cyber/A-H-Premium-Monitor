@@ -507,23 +507,52 @@ with tabs[1]:
         "override it (recommended for cyclicals near a cycle peak) — "
         "the *DPS basis* column shows which is in use. Status: "
         "**WAIT** = price more than 5% above the top-up price · "
-        "**NEAR TOP-UP** = within 5% above it · **TOP-UP REVIEW** = at "
-        "or below it · **DATA REVIEW** = dividend data missing. China "
-        "Life, BYD and SMIC are shown but are not yield-based.")
+        "**NEAR RANGE** = within 5% above it · **IN RANGE — REVIEW** = "
+        "at or below it — the yield threshold is met, but dividend "
+        "sustainability still needs your review before acting · "
+        "**DATA REVIEW** = dividend data missing. China Life, BYD and "
+        "SMIC are shown but are not yield-based.")
     from ahmon import divwatch as _divwatch
     dw = _divwatch.build_topup_table(conn)
     if dw.empty:
         st.info("Watchlist empty — an admin can seed it in the admin "
                 "section below.")
     else:
-        _status_css = {"TOP-UP REVIEW": "background-color: #0083002e",
-                       "NEAR TOP-UP": "background-color: #eda1002e",
-                       "DATA REVIEW": "background-color: #e3494820"}
+        _status_css = {
+            _divwatch.ST_REVIEW: "background-color: #0083002e",
+            _divwatch.ST_NEAR: "background-color: #eda1002e",
+            _divwatch.ST_DATA: "background-color: #e3494820"}
+        _basis_css = {
+            _divwatch.BASIS_TRAILING_FLAG: "background-color: #eda1002e"}
         st.dataframe(
             dw.style.format(precision=2, na_rep="—")
-            .map(lambda v: _status_css.get(v, ""), subset=["Status"]),
+            .map(lambda v: _status_css.get(v, ""), subset=["Status"])
+            .map(lambda v: _basis_css.get(v, ""), subset=["DPS basis"]),
             hide_index=True, use_container_width=True, row_height=40,
-            height=min(620, 70 + 40 * len(dw)))
+            height=min(620, 70 + 40 * len(dw)),
+            column_config={
+                "Status": st.column_config.TextColumn(help=(
+                    "IN RANGE — REVIEW: the trailing-yield threshold "
+                    "has been reached — but check dividend "
+                    "sustainability before acting (is the DPS "
+                    "normalised? is the payout one-off?). NEAR RANGE: "
+                    "price within 5% above the top-up level. WAIT: "
+                    "more than 5% above. DATA REVIEW: no reliable "
+                    "DPS yet.")),
+                "Position vs top-up price": st.column_config.TextColumn(
+                    help="Where today's price sits relative to the "
+                         "top-up price. 'Below' means the price is "
+                         "under the top-up level — the yield already "
+                         "clears the target."),
+                "DPS basis": st.column_config.TextColumn(help=(
+                    "Which DPS the row uses. 'Trailing 12m DPS' = sum "
+                    "of the last 12 months' declared dividends. "
+                    "'Trailing DPS — review special' = that sum is "
+                    "more than 1.6× the previous 12 months, so it may "
+                    "contain a special or unusual payment — consider "
+                    "a manual normalised override. 'Manual normalised "
+                    "DPS' = your approved figure.")),
+            })
         n_review = int((dw["Status"] == "DATA REVIEW").sum())
         n_manual = int((dw["DPS basis"] == _divwatch.BASIS_MANUAL).sum())
         bits = []
