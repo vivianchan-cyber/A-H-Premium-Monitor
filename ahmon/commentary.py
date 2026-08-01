@@ -28,6 +28,33 @@ def _fmt_names(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+_DRIVER_PHRASE = {
+    "H-share outperformance": "H-share strength",
+    "H-share underperformance": "H-share weakness",
+    "A-share outperformance": "A-share strength",
+    "A-share underperformance": "A-share weakness",
+    "CNY/HKD movement": "currency moves",
+    "Combination of factors": "a mix of factors",
+}
+
+
+def _cause_sentence(att: pd.DataFrame, companies,
+                    min_move_pp: float = 1.0) -> str:
+    """One sentence naming what drove the window's moves — counted from
+    the arithmetic attribution decomposition, never inferred."""
+    if att is None or att.empty:
+        return ""
+    sub = att[att["Company"].isin(set(companies))]
+    sub = sub[sub["Premium move (pp)"].abs() >= min_move_pp]
+    if sub.empty:
+        return ""
+    counts = sub["Driver"].map(_DRIVER_PHRASE).value_counts()
+    bits = [f"{phrase} ({n} name{'s' if n > 1 else ''})"
+            for phrase, n in counts.head(3).items()]
+    return (" Cause of the larger moves, by attribution: "
+            + ", ".join(bits) + ".")
+
+
 def _discount_delta(t: pd.DataFrame, col: str) -> pd.Series:
     """Per-company change of the H discount over the window whose
     premium change is stored in `col` (result in discount points)."""
@@ -80,7 +107,8 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
             f"universe, the median H-share discount {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
-            + f".{flag}")
+            + f".{flag}"
+            + _cause_sentence(attribution, rest["Company"]))
 
     warn = table[table["Quality"].isin(["stale", "failed"])]
     if not warn.empty:
@@ -93,9 +121,13 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
     return "\n\n".join(parts) if parts else "No data available for commentary."
 
 
-def period_commentary(table: pd.DataFrame, period: str) -> str:
+def period_commentary(table: pd.DataFrame, period: str,
+                      attribution: pd.DataFrame | None = None) -> str:
     """Weekly ('1w') or monthly ('1m') commentary from stored changes.
-    Same Focus-first structure as the daily note, over a longer window."""
+    Same Focus-first structure as the daily note, over a longer window.
+    `attribution` should be the decomposition computed over the SAME
+    window (metrics.attribution_over), so each paragraph can state what
+    caused its moves."""
     col = {"1w": "Δ1w (pp)", "1m": "Δ1m (pp)"}[period]
     label = {"1w": "week", "1m": "month"}[period]
     focus = table[table["Classification"] == config.FOCUS].dropna(
@@ -119,7 +151,8 @@ def period_commentary(table: pd.DataFrame, period: str) -> str:
             f"({', '.join(f'{v:+.1f}pp' for v in nar['dd'])}). "
             f"Widened most (H relatively cheaper): "
             f"{_fmt_names(list(wid['Company']))} "
-            f"({', '.join(f'{v:+.1f}pp' for v in wid['dd'])}).")
+            f"({', '.join(f'{v:+.1f}pp' for v in wid['dd'])})."
+            + _cause_sentence(attribution, focus["Company"]))
 
     if not rest.empty:
         rest["dd"] = _discount_delta(rest, col)
@@ -136,7 +169,9 @@ def period_commentary(table: pd.DataFrame, period: str) -> str:
             f"**Broader A–H Market ({label}):** Across the rest of the "
             f"universe, the median H-share discount {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points" if abs(med) > 0.05
-               else "") + f".{flag}")
+               else "") + f".{flag}"
+            + _cause_sentence(attribution, rest["Company"],
+                              min_move_pp=2.0))
 
     hi = table.dropna(subset=["52w percentile"])
     ext = hi[(hi["52w percentile"] >= 98) | (hi["52w percentile"] <= 2)]

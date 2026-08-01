@@ -329,6 +329,52 @@ def premium_to_discount(p):
     return p / (100.0 + p) * 100.0
 
 
+def attribution_over(conn, table: pd.DataFrame, days: int) -> pd.DataFrame:
+    """Attribution of each company's premium move over ~`days` calendar
+    days: the same pure-arithmetic log-return decomposition as the
+    1-day table, applied between the latest stored observation and the
+    one at or before the window start. Companies without both
+    endpoints are skipped (they simply have no attributable move)."""
+    obs = db.daily_df(conn)
+    if obs.empty or table.empty:
+        return pd.DataFrame(columns=ATTRIBUTION_COLUMNS)
+    obs = obs.copy()
+    obs["_d"] = pd.to_datetime(obs["date"])
+    groups = {cid: g.sort_values("_d") for cid, g in
+              obs.groupby("company_id")}
+    rows = []
+    for _, r in table.iterrows():
+        g = groups.get(r["company_id"])
+        if g is None or len(g) < 2:
+            continue
+        q = g.iloc[-1]
+        earlier = g[g["_d"] <= q["_d"] - pd.Timedelta(days=days)]
+        if earlier.empty:
+            continue
+        p = earlier.iloc[-1]
+        legs = [p["a_close"], q["a_close"], p["h_close"], q["h_close"],
+                p["fx"], q["fx"]]
+        if any(v is None or pd.isna(v) or v <= 0 for v in legs):
+            continue
+        att = calc.attribute_premium_move(p["a_close"], q["a_close"],
+                                          p["h_close"], q["h_close"],
+                                          p["fx"], q["fx"])
+        rows.append({
+            "Company": r["Company"], "Classification": r["Classification"],
+            "Premium move (pp)": round(att.premium_move_pp, 2),
+            "Driver": att.driver,
+            "A contribution (pp)": round(att.a_contrib_pp, 2),
+            "H contribution (pp)": round(att.h_contrib_pp, 2),
+            "FX contribution (pp)": round(att.fx_contrib_pp, 2),
+        })
+    if not rows:
+        return pd.DataFrame(columns=ATTRIBUTION_COLUMNS)
+    df = pd.DataFrame(rows)
+    return df.reindex(df["Premium move (pp)"].abs()
+                      .sort_values(ascending=False).index) \
+        .reset_index(drop=True)
+
+
 def sector_stats(conn, table: pd.DataFrame) -> pd.DataFrame:
     """Per-sector view in the owner's H-buyer convention: median and
     average H discount, with Δ columns = change of the median company's

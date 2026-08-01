@@ -189,8 +189,8 @@ with st.sidebar:
 
 # -------------------------------------------------------------------- tabs
 tabs = st.tabs(["Stock Monitor", "Buy-level watch", "Market Overview",
-                "Attribution", "Sectors", "Charts", "Alerts",
-                "Commentary", "Health"])
+                "Attribution", "Sectors", "Charts", "Commentary",
+                "Alerts", "Health"])
 
 # ------------------------------------------------------- 3 Market Overview
 with tabs[2]:
@@ -961,8 +961,8 @@ with tabs[5]:
                "discounts; near zero (or negative) = the two listings "
                "price almost alike, or the H share is the dearer one.")
 
-# -------------------------------------------------------------- 7 Alerts
-with tabs[6]:
+# -------------------------------------------------------------- 8 Alerts
+with tabs[7]:
     if st.button("Evaluate alert rules now", type="primary"):
         fired = alerts.evaluate(conn, table)
         st.session_state["fired"] = fired
@@ -979,8 +979,16 @@ with tabs[6]:
     with st.expander("Alert log (persisted)"):
         st.dataframe(db.alerts_df(conn), use_container_width=True)
 
-# ---------------------------------------------------------- 8 Commentary
-with tabs[7]:
+# ---------------------------------------------------------- 7 Commentary
+@st.cache_data(ttl=300, show_spinner=False)
+def att_over(version: int, days: int) -> pd.DataFrame:
+    """Window attribution for the commentary cause sentences, cached so
+    the history pull doesn't rerun on every widget interaction."""
+    t, _ = load(version)
+    return metrics.attribution_over(get_conn(), t, days)
+
+
+with tabs[6]:
     st.subheader("Automated daily commentary (template, calculated facts)")
     st.markdown(commentary.daily_commentary(table, att))
     st.divider()
@@ -989,10 +997,17 @@ with tabs[7]:
         table, att, metrics.sector_stats(conn, table)))
     st.divider()
     st.subheader("Automated weekly commentary")
-    st.markdown(commentary.period_commentary(table, "1w"))
+    st.markdown(commentary.period_commentary(
+        table, "1w", att_over(st.session_state["data_version"], 7)))
     st.divider()
     st.subheader("Automated monthly commentary")
-    st.markdown(commentary.period_commentary(table, "1m"))
+    st.markdown(commentary.period_commentary(
+        table, "1m", att_over(st.session_state["data_version"], 30)))
+    st.caption("Every 'cause' sentence is counted from the Attribution "
+               "tab's arithmetic decomposition over the matching window "
+               "— daily causes from the 1-day decomposition, weekly and "
+               "monthly from the same math applied across those "
+               "windows. Nothing is inferred or written by an AI.")
     st.caption("The scheduler (`python -m ahmon.scheduler`) stores these "
                "automatically: daily + closing after the HK close, weekly "
                "on Friday, monthly on the month's last trading day.")

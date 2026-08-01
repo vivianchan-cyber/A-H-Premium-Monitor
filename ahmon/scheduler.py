@@ -65,13 +65,17 @@ def run_eod(conn) -> None:
         table, att, metrics.sector_stats(conn, table)))
     now = pd.Timestamp.now(tz=config.TZ)
     if now.dayofweek == 4:                                   # Friday
-        db.insert_commentary(conn, "weekly",
-                             commentary.period_commentary(table, "1w"))
+        db.insert_commentary(
+            conn, "weekly",
+            commentary.period_commentary(
+                table, "1w", metrics.attribution_over(conn, table, 7)))
     cal = market_hours._cal("XHKG")
     nxt = cal.next_session(now.normalize().tz_localize(None))
     if pd.Timestamp(nxt).month != now.month:                 # month's last session
-        db.insert_commentary(conn, "monthly",
-                             commentary.period_commentary(table, "1m"))
+        db.insert_commentary(
+            conn, "monthly",
+            commentary.period_commentary(
+                table, "1m", metrics.attribution_over(conn, table, 30)))
     log.info("EOD snapshot + commentary stored (refresh: %s companies, "
              "%s buy-watch)", s.get("upserted"), s.get("buy_watch"))
 

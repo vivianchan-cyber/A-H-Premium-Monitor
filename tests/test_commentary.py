@@ -44,3 +44,35 @@ def test_closing_summary_direction_key():
     text = commentary.closing_summary(make_table(), att, sect)
     assert "H-share discount" in text
     assert "negative = H catching up" in text
+
+
+def test_cause_sentence_counts_drivers():
+    att = pd.DataFrame({
+        "Company": ["A Co", "B Co", "C Co", "D Co"],
+        "Driver": ["H-share outperformance", "H-share outperformance",
+                   "A-share underperformance", "Combination of factors"],
+        "Premium move (pp)": [-8.0, -5.0, -3.0, 0.4],   # D below threshold
+    })
+    s = commentary._cause_sentence(att, ["A Co", "B Co", "C Co", "D Co"])
+    assert "H-share strength (2 names)" in s
+    assert "A-share weakness (1 name)" in s
+    assert "mix of factors" not in s                    # filtered out
+
+    # empty attribution stays silent, never guesses
+    assert commentary._cause_sentence(None, ["A Co"]) == ""
+
+
+def test_period_commentary_includes_cause_when_attribution_given():
+    t = make_table()
+    t.loc[:, "Δ1w (pp)"] = [-10.0, -6.0]
+    att = pd.DataFrame({
+        "Company": ["Bank of China"],
+        "Driver": ["H-share outperformance"],
+        "Premium move (pp)": [-10.0],
+    })
+    text = commentary.period_commentary(t, "1w", att)
+    assert "Cause of the larger moves, by attribution" in text
+    assert "H-share strength" in text
+    # without attribution the paragraphs still render, minus the cause
+    text2 = commentary.period_commentary(t, "1w")
+    assert "Cause of the larger moves" not in text2

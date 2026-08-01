@@ -50,3 +50,33 @@ class TestSectorStats:
         # sorted by median discount, biggest first
         first = metrics.sector_stats(None, self.make_table()).iloc[0]
         assert first["Sector"] == "Technology"
+
+
+class TestAttributionOver:
+    def test_window_attribution_from_history(self, tmp_path):
+        from ahmon import db
+        conn = db.connect(tmp_path / "t.db")
+        cid = db.upsert_company(conn, "Bank of China", "3988.HK",
+                                "601988.SS", "Financials")
+        # 40 days apart: H rallies 20%, A and FX flat -> premium narrows,
+        # driver = H-share outperformance
+        db.insert_daily(conn, [
+            {"company_id": cid, "date": "2026-06-20", "a_close": 6.0,
+             "h_close": 5.0, "fx": 1.1, "premium_calc": 32.0,
+             "premium_src": 32.0, "a_div_yield": None, "h_div_yield": None,
+             "quality": "eod", "updated_at": "2026-06-20T16:00:00"},
+            {"company_id": cid, "date": "2026-07-30", "a_close": 6.0,
+             "h_close": 6.0, "fx": 1.1, "premium_calc": 10.0,
+             "premium_src": 10.0, "a_div_yield": None, "h_div_yield": None,
+             "quality": "eod", "updated_at": "2026-07-30T16:00:00"},
+        ])
+        table = pd.DataFrame({"Company": ["Bank of China"],
+                              "Classification": ["Focus Holding"],
+                              "company_id": [cid]})
+        att = metrics.attribution_over(conn, table, 30)
+        assert len(att) == 1
+        assert att.iloc[0]["Driver"] == "H-share outperformance"
+        assert att.iloc[0]["Premium move (pp)"] == pytest.approx(-22.0)
+        # window longer than the stored history -> no attributable move
+        assert metrics.attribution_over(conn, table, 365).empty
+        conn.close()
