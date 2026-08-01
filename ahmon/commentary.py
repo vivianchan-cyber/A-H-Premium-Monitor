@@ -28,31 +28,73 @@ def _fmt_names(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
-_DRIVER_PHRASE = {
-    "H-share outperformance": "H-share strength",
-    "H-share underperformance": "H-share weakness",
-    "A-share outperformance": "A-share strength",
-    "A-share underperformance": "A-share weakness",
-    "CNY/HKD movement": "currency moves",
-    "Combination of factors": "a mix of factors",
+# The attribution decomposition only knows which price leg moved — the
+# H share, the A share, or both — never the economic reason behind the
+# move. The driver sentences below therefore describe the dominant
+# price leg and nothing more, in plain prose (full breakdowns stay on
+# the Attribution tab).
+_DRIVER_CAT = {
+    "H-share underperformance": "h_weak",
+    "H-share outperformance": "h_strong",
+    "A-share outperformance": "a_strong",
+    "A-share underperformance": "a_weak",
+    "Combination of factors": "both",
+    "CNY/HKD movement": "fx",
+}
+# leg categories: (direction of the discount, performance phrase)
+_LEG_WORDS = {
+    "h_weak": ("widened", "weaker H-share performance"),
+    "h_strong": ("narrowed", "stronger H-share performance"),
+    "a_strong": ("widened", "stronger A-share performance"),
+    "a_weak": ("narrowed", "weaker A-share performance"),
 }
 
 
-def _cause_sentence(att: pd.DataFrame, companies,
-                    min_move_pp: float = 1.0) -> str:
-    """One sentence naming what drove the window's moves — counted from
-    the arithmetic attribution decomposition, never inferred."""
+def _driver_sentence(att: pd.DataFrame, companies, style: str = "week",
+                     min_move_pp: float = 1.0) -> str:
+    """One concise sentence naming the main price-leg driver of the
+    window's larger moves: the attribution category with the highest
+    count of names. A tie between the top two categories is reported
+    as no single driver dominant — never forced. Weekly and monthly
+    phrasing differ slightly so stored notes don't read as one
+    repeated template. Returns '' when attribution is unavailable."""
     if att is None or att.empty:
         return ""
     sub = att[att["Company"].isin(set(companies))]
     sub = sub[sub["Premium move (pp)"].abs() >= min_move_pp]
     if sub.empty:
         return ""
-    counts = sub["Driver"].map(_DRIVER_PHRASE).value_counts()
-    bits = [f"{phrase} ({n} name{'s' if n > 1 else ''})"
-            for phrase, n in counts.head(3).items()]
-    return (" Cause of the larger moves, by attribution: "
-            + ", ".join(bits) + ".")
+    counts = sub["Driver"].map(_DRIVER_CAT).value_counts()
+    if counts.empty:
+        return ""
+    tie = len(counts) >= 2 and counts.iloc[0] == counts.iloc[1]
+    top = counts.index[0]
+    monthly = style == "month"
+
+    if tie:
+        s = ("The change reflected a combination of A-share and H-share "
+             "movements, with no single driver dominant.")
+        return " " + ("Over the month, the change reflected a "
+                      "combination of A-share and H-share movements, "
+                      "with no single driver dominant." if monthly else s)
+    if top == "both":
+        return " " + ("Over the month, the change mainly reflected "
+                      "movements in both the A- and H-shares." if monthly
+                      else "The change mainly reflected movements in "
+                           "both the A- and H-shares.")
+    if top == "fx":
+        return " " + ("Over the month, the change was mainly associated "
+                      "with movements in the CNY/HKD exchange rate."
+                      if monthly else
+                      "The change was mainly associated with movements "
+                      "in the CNY/HKD exchange rate.")
+    direction, perf = _LEG_WORDS[top]
+    if monthly:
+        form = "wider" if direction == "widened" else "narrower"
+        return (f" Over the month, the {form} H-share discount to "
+                f"A-shares was mainly due to {perf}.")
+    return (f" The median H-share discount to A-shares {direction} "
+            f"mainly due to {perf}.")
 
 
 def _discount_delta(t: pd.DataFrame, col: str) -> pd.Series:
@@ -84,7 +126,7 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
             if not drivers.empty else 0
         cause = ("mainly because their H shares outperformed their "
                  "corresponding A shares" if h_driven >= 2 else
-                 "driven by a mix of A-share and H-share moves")
+                 "reflecting movements in both the A- and H-shares")
         amount = (f" by {abs(med):.1f} percentage points"
                   if abs(med) > 0.05 else "")
         parts.append(
@@ -108,7 +150,7 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
             + f".{flag}"
-            + _cause_sentence(attribution, rest["Company"]))
+            + _driver_sentence(attribution, rest["Company"]))
 
     warn = table[table["Quality"].isin(["stale", "failed"])]
     if not warn.empty:
@@ -152,7 +194,8 @@ def period_commentary(table: pd.DataFrame, period: str,
             f"Widened most (H relatively cheaper): "
             f"{_fmt_names(list(wid['Company']))} "
             f"({', '.join(f'{v:+.1f}pp' for v in wid['dd'])})."
-            + _cause_sentence(attribution, focus["Company"]))
+            + _driver_sentence(attribution, focus["Company"],
+                               style=label))
 
     if not rest.empty:
         rest["dd"] = _discount_delta(rest, col)
@@ -170,8 +213,8 @@ def period_commentary(table: pd.DataFrame, period: str,
             f"universe, the median H-share discount {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points" if abs(med) > 0.05
                else "") + f".{flag}"
-            + _cause_sentence(attribution, rest["Company"],
-                              min_move_pp=2.0))
+            + _driver_sentence(attribution, rest["Company"],
+                               style=label, min_move_pp=2.0))
 
     hi = table.dropna(subset=["52w percentile"])
     ext = hi[(hi["52w percentile"] >= 98) | (hi["52w percentile"] <= 2)]
