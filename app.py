@@ -841,7 +841,34 @@ with tabs[4]:
     st.dataframe(metrics.sector_stats(conn, table)
                  .style.format(precision=2, na_rep="—")
                  .map(sector_css, subset=["Sector"]),
-                 use_container_width=True)
+                 use_container_width=True,
+                 column_config={
+                     "Sector": st.column_config.TextColumn(
+                         help="One of the eight sector buckets from "
+                              "config/sector_map.csv."),
+                     "Companies": st.column_config.NumberColumn(
+                         help="How many A–H companies the sector "
+                              "currently holds."),
+                     "Median H discount (%)": st.column_config.NumberColumn(
+                         help="TODAY's snapshot (latest refresh): the "
+                              "middle company's H-share discount to its "
+                              "A twin — half the sector is deeper, half "
+                              "shallower. Not an average over time."),
+                     "Avg H discount (%)": st.column_config.NumberColumn(
+                         help="TODAY's snapshot: the simple average of "
+                              "the sector's per-company H discounts."),
+                     "Δ1m median (pp)": st.column_config.NumberColumn(
+                         help="Change of the median discount vs one "
+                              "month ago, in percentage points. "
+                              "Positive = discounts widened (H got "
+                              "relatively cheaper); negative = "
+                              "narrowed (convergence)."),
+                     "Δ1y median (pp)": st.column_config.NumberColumn(
+                         help="Change of the median discount vs one "
+                              "year ago, in percentage points — the "
+                              "change over the year, not the year's "
+                              "median."),
+                 })
     hist = metrics.sector_history(conn)
     fig = go.Figure()
     for i, sector in enumerate(config.SECTORS):
