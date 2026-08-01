@@ -894,24 +894,29 @@ with tabs[5]:
                         key="chart_pick")
     cid = int(table[table["Company"] == pick].iloc[0]["company_id"])
     g = db.daily_df(conn, cid)
-    prem = pd.Series(g["premium_calc"].values, index=g["date"])
+    disc = pd.Series(
+        metrics.premium_to_discount(g["premium_calc"]).values,
+        index=g["date"])
     rng = st.radio("Range", list(RANGE_KEYS), index=1, horizontal=True,
                    key="stock_rng",
-                   help="Time window for the premium-history chart below. "
+                   help="Time window for the discount-history chart below. "
                         "3m plots daily observations, 1y weekly, 3y/5y/max "
                         "monthly. Daily history is always stored regardless "
                         "of what is displayed.")
-    s = calc.resample_for_range(prem, RANGE_KEYS[rng])
-    fig = line_chart(s, f"{pick} A-share premium (%)")
-    fig.update_layout(title=f"{pick} — A-share premium history (%)")
+    s = calc.resample_for_range(disc, RANGE_KEYS[rng])
+    fig = line_chart(s, f"{pick} H discount to A (%)")
+    fig.update_layout(title=f"{pick} — H-share discount to A, history (%)")
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"This chart is specific to {pick}: its calculated A-share "
-               "premium over the selected range.")
+    st.caption(f"This chart is specific to {pick}: how much less its H "
+               "share cost than its A twin over the selected range. A "
+               "falling line = the discount shrinking (convergence an H "
+               "holder benefits from); a rising line = the H share "
+               "getting relatively cheaper.")
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("##### Current premium vs 5-year range")
-        r5 = calc.rolling_stats(prem, config.WINDOW_5Y)
+        st.markdown("##### Current H discount vs 5-year range")
+        r5 = calc.rolling_stats(disc, config.WINDOW_5Y)
         if r5["median"] is not None:
             fig = go.Figure()
             fig.add_shape(type="line", x0=r5["low"], x1=r5["high"], y0=0, y1=0,
@@ -920,12 +925,15 @@ with tabs[5]:
                             name="5y median",
                             marker=dict(color=INK["muted"], size=14,
                                         symbol="line-ns-open"))
-            fig.add_scatter(x=[prem.iloc[-1]], y=[0], mode="markers",
+            fig.add_scatter(x=[disc.iloc[-1]], y=[0], mode="markers",
                             name="Current",
                             marker=dict(color=C["blue"], size=16))
             fig.update_yaxes(visible=False)
-            fig.update_xaxes(title="Premium (%)")
+            fig.update_xaxes(title="H discount to A (%)")
             st.plotly_chart(styled(fig, 200), use_container_width=True)
+            st.caption("Blue dot right of the tick mark = today's "
+                       "discount is wider than this company's own "
+                       "5-year norm.")
     with c2:
         st.markdown("##### A vs H rebased to 100 (1y)")
         cutoff = g["date"].max() - pd.DateOffset(years=1)
@@ -939,14 +947,19 @@ with tabs[5]:
                         line=dict(color=C["green"], width=2))
         st.plotly_chart(styled(fig, 240), use_container_width=True)
 
-    st.markdown("##### Premium distribution across the A–H universe (today)")
+    st.markdown("##### H discount distribution across the A–H universe "
+                "(today)")
     fig = go.Figure(go.Histogram(
-        x=table["Premium calc (%)"], nbinsx=30,
+        x=table["H discount to A (%)"], nbinsx=30,
         marker=dict(color=C["blue"],
                     line=dict(color=INK["surface"], width=2))))
-    fig.update_xaxes(title="A-share premium (%)")
+    fig.update_xaxes(title="H-share discount to A (%)")
     fig.update_yaxes(title="Companies")
     st.plotly_chart(styled(fig, 300), use_container_width=True)
+    st.caption("How today's H discounts spread across all companies: "
+               "bars far right = names selling at the steepest H "
+               "discounts; near zero (or negative) = the two listings "
+               "price almost alike, or the H share is the dearer one.")
 
 # -------------------------------------------------------------- 7 Alerts
 with tabs[6]:
