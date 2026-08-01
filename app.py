@@ -332,9 +332,8 @@ DISPLAY_COLS = [
     "Sector", "H Price (HKD)", "H % change today",
     "A Price (CNY)", "A % change today", "FX (HKD per 1 CNY)",
     "H discount to A (%)", "H upside to 5y median (%)",
-    "H div yield (%)", "A div yield (%)",
-    "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)",
-    "P/E (H)", "P/E (A)", "P/B (H)", "P/B (A)",
+    "H div yield (%)", "P/E (H)", "A div yield (%)", "P/E (A)",
+    "Mkt cap H (HKD bn)", "Mkt cap A (CNY bn)", "P/B (H)", "P/B (A)",
     "3y median (pp)", "5y median (pp)", "Dist from 5y median (pp)",
     "5y percentile", "Dist from 3y median (pp)", "52w percentile",
     # premium level + its changes live together at the right end
