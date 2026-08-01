@@ -70,6 +70,32 @@ class TestApplySectorMap:
         assert comps.loc["902.HK", "sector"] == "Industrials"
         assert comps.loc["9998.HK", "sector"] == config.SECTOR_UNCLASSIFIED
 
+    def test_curated_english_name_replaces_feed_placeholder(
+            self, conn, tmp_path):
+        # the feed adds new companies with the Chinese name as the
+        # English placeholder; the CSV corrects it (e.g. 中际旭创 →
+        # Zhongji Innolight)
+        db.upsert_company(conn, "中际旭创", "3308.HK", "300308.SZ",
+                          config.SECTOR_UNCLASSIFIED)
+        p = self.write_map(tmp_path, {
+            "h_ticker": ["3308.HK"],
+            "name_en": ["Zhongji Innolight Co., Ltd."],
+            "sector": ["Technology"]})
+        res = apply_sector_map(conn, p)
+        assert res["updated"] == ["3308.HK: Unclassified → Technology"]
+        assert res["renamed"] == \
+            ["3308.HK: 中际旭创 → Zhongji Innolight Co., Ltd."]
+        comps = db.companies_df(conn).set_index("h_ticker")
+        assert comps.loc["3308.HK", "name_en"] == \
+            "Zhongji Innolight Co., Ltd."
+        assert comps.loc["3308.HK", "sector"] == "Technology"
+        res2 = apply_sector_map(conn, p)               # second run: no-op
+        assert res2["updated"] == [] and res2["renamed"] == []
+
+    def test_shipped_map_has_innolight(self):
+        smap = load_sector_map()
+        assert smap["3308.HK"] == "Technology"
+
     def test_idempotent_and_logged(self, conn, tmp_path):
         p = self.write_map(tmp_path, {
             "h_ticker": ["902.HK"], "name_en": ["y"],

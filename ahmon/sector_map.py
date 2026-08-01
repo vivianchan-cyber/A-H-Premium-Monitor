@@ -57,11 +57,17 @@ def load_sector_map(csv_path: str | Path | None = None) -> dict[str, str]:
 
 def apply_sector_map(conn, csv_path: str | Path | None = None,
                      source: str = "sector_map.csv") -> dict:
-    """Set each company's sector to the mapped value. Returns what changed
+    """Set each company's sector — and English name, where the CSV
+    carries a better one — to the curated values. The feed adds new
+    companies with their Chinese name as the English placeholder, so
+    the CSV doubles as the owner's name registry. Returns what changed
     and which DB companies the map doesn't cover (left untouched)."""
     smap = load_sector_map(csv_path)
+    path = Path(csv_path) if csv_path else SECTOR_MAP_CSV
+    names = dict(zip(pd.read_csv(path)["h_ticker"].str.strip(),
+                     pd.read_csv(path)["name_en"].fillna("").str.strip()))
     comps = db.companies_df(conn)
-    updated, unmapped = [], []
+    updated, renamed, unmapped = [], [], []
     for _, c in comps.iterrows():
         want = smap.get(c["h_ticker"])
         if want is None:
@@ -74,8 +80,16 @@ def apply_sector_map(conn, csv_path: str | Path | None = None,
             db.log_constituent(conn, "sector_set", c["h_ticker"],
                                f"{c['sector']} → {want} ({source})")
             updated.append(f"{c['h_ticker']}: {c['sector']} → {want}")
-    return {"updated": updated, "unmapped": sorted(unmapped),
-            "mapped_size": len(smap)}
+        want_name = names.get(c["h_ticker"], "")
+        if want_name and want_name != c["name_en"]:
+            conn.execute(
+                "UPDATE companies SET name_en=:n WHERE id=:i",
+                {"n": want_name, "i": int(c["id"])})
+            db.log_constituent(conn, "name_set", c["h_ticker"],
+                               f"{c['name_en']} → {want_name} ({source})")
+            renamed.append(f"{c['h_ticker']}: {c['name_en']} → {want_name}")
+    return {"updated": updated, "renamed": renamed,
+            "unmapped": sorted(unmapped), "mapped_size": len(smap)}
 
 
 def main(argv=None):
