@@ -322,34 +322,52 @@ def extremes_52w(table: pd.DataFrame) -> pd.DataFrame:
 
 # -------------------------------------------------------------------- sector
 
+def premium_to_discount(p):
+    """H discount to A implied by an A-share premium (both in %):
+    discount = p / (100 + p) × 100. Monotone, so medians and orderings
+    carry over between the two views."""
+    return p / (100.0 + p) * 100.0
+
+
 def sector_stats(conn, table: pd.DataFrame) -> pd.DataFrame:
+    """Per-sector view in the owner's H-buyer convention: median and
+    average H discount, with Δ columns = change of the median company's
+    discount in percentage points. Column names 'Sector' and
+    'Δ1m median (pp)' are part of the commentary contract."""
     if table.empty:
         return pd.DataFrame(columns=[
-            "Sector", "Companies", "Median premium (%)",
-            "Weighted avg premium (%)", "Δ1m median (pp)",
+            "Sector", "Companies", "Median H discount (%)",
+            "Avg H discount (%)", "Δ1m median (pp)",
             "Δ1y median (pp)"])
     rows = []
     for sector, g in table.groupby("Sector"):
-        weights = g["Premium calc (%)"] * 0 + 1.0   # equal weight fallback
+        disc = g["H discount to A (%)"]
+        # discount change over the window: today's discount minus the
+        # discount implied by the premium as of the window start
+        d1m = disc - premium_to_discount(g["Premium calc (%)"]
+                                         - g["Δ1m (pp)"])
+        d1y = disc - premium_to_discount(g["Premium calc (%)"]
+                                         - g["Δ1y (pp)"])
         rows.append({
             "Sector": sector, "Companies": len(g),
-            "Median premium (%)": g["Premium calc (%)"].median(),
-            "Weighted avg premium (%)":
-                np.average(g["Premium calc (%)"], weights=weights),
-            "Δ1m median (pp)": g["Δ1m (pp)"].median(),
-            "Δ1y median (pp)": g["Δ1y (pp)"].median(),
+            "Median H discount (%)": disc.median(),
+            "Avg H discount (%)": disc.mean(),
+            "Δ1m median (pp)": d1m.median(),
+            "Δ1y median (pp)": d1y.median(),
         })
-    return pd.DataFrame(rows).sort_values("Median premium (%)",
-                                          ascending=False).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(
+        "Median H discount (%)", ascending=False).reset_index(drop=True)
 
 
 def sector_history(conn) -> pd.DataFrame:
-    """Daily median premium per sector (long format: date, sector, median)."""
+    """Daily median H discount per sector (long: date, sector, median).
+    Computed per company from the stored premium, then aggregated."""
     obs = db.daily_df(conn)
     comps = db.companies_df(conn)[["id", "sector"]]
     m = obs.merge(comps, left_on="company_id", right_on="id")
-    return (m.groupby(["date", "sector"])["premium_calc"]
-             .median().rename("median_premium").reset_index())
+    m["discount"] = premium_to_discount(m["premium_calc"])
+    return (m.groupby(["date", "sector"])["discount"]
+             .median().rename("median_discount").reset_index())
 
 
 # --------------------------------------------------------------- attribution

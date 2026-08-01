@@ -44,7 +44,7 @@ class TestEmptyDatabase:
         assert len(att) == 0
         assert list(att.columns) == metrics.ATTRIBUTION_COLUMNS
         sect = metrics.sector_stats(empty_conn, t)
-        assert len(sect) == 0 and "Median premium (%)" in sect.columns
+        assert len(sect) == 0 and "Median H discount (%)" in sect.columns
         hist = metrics.sector_history(empty_conn)
         assert len(hist) == 0
 

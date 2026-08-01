@@ -829,12 +829,15 @@ with tabs[4]:
         "Each company is assigned to one of eight sectors in the "
         "sector map (`config/sector_map.csv`, applied automatically by "
         "the live refresh and re-appliable from the Stock Monitor admin "
-        "panel). The numbers "
-        "below are computed from the same per-company premiums shown in the "
-        "Stock Monitor" +
+        "panel). The numbers below come from the same per-company "
+        "prices as the Stock Monitor — Eastmoney A/H quotes with Yahoo "
+        "FX — expressed in the **H-buyer's view**: *Median H discount* "
+        "= the middle company's H-share discount to its A twin within "
+        "the sector (the identical fact as the A-share premium, since "
+        "discount = premium ÷ (100 + premium) × 100)" +
         (" — currently **synthetic sample data**" if n_sample else "") +
-        ". *Median premium* = the middle company's A-share premium within "
-        "the sector.")
+        ". Δ columns are the change of that median discount, in "
+        "percentage points.")
     st.dataframe(metrics.sector_stats(conn, table)
                  .style.format(precision=2, na_rep="—")
                  .map(sector_css, subset=["Sector"]),
@@ -845,16 +848,18 @@ with tabs[4]:
         g = hist[hist["sector"] == sector]
         if g.empty:
             continue
-        s = pd.Series(g["median_premium"].values,
+        s = pd.Series(g["median_discount"].values,
                       index=pd.DatetimeIndex(g["date"])).resample("ME").last()
         fig.add_scatter(x=s.index, y=s.values, name=sector, mode="lines",
                         line=dict(color=SECTOR_COLOR[sector], width=2))
-    fig.update_layout(title="Sector median A-share premium (monthly)")
+    fig.update_layout(title="Sector median H-share discount to A (monthly)")
     st.plotly_chart(styled(fig, 420), use_container_width=True)
-    st.caption("Each line = the median A-share premium of that sector's "
-               "companies at each month-end. A falling line means the "
-               "sector's A shares got cheaper relative to their H shares "
-               "(premium narrowing); a rising line means widening.")
+    st.caption("Each line = the median H-share discount of that sector's "
+               "companies at each month-end, computed from the stored "
+               "daily price history. A falling line means the discount "
+               "is shrinking — H shares catching up with their A twins "
+               "(the convergence an H holder benefits from); a rising "
+               "line means H shares getting relatively cheaper.")
 
 # -------------------------------------------------------------- 6 Charts
 with tabs[5]:
