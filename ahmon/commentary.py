@@ -1,12 +1,23 @@
-"""Template-based daily commentary generated purely from calculated data.
-An LLM narrative layer may be added later, but only on top of these verified
-numbers — never as a replacement for them."""
+"""Template-based daily commentary generated purely from calculated data,
+written in the owner's H-buyer convention: every figure is the H-share
+discount to the A twin (discount = premium ÷ (100 + premium) × 100).
+'Narrowed' = discounts shrank = H shares caught up (convergence an H
+holder benefits from); 'widened' = H shares got relatively cheaper.
+An LLM narrative layer may be added later, but only on top of these
+verified numbers — never as a replacement for them."""
 
 from __future__ import annotations
 
 import pandas as pd
 
-from . import config
+from . import config, metrics
+
+# Review-flag thresholds in DISCOUNT points. Discount space is
+# compressed vs premium space: for a mid-range name (premium ≈ 60%,
+# discount ≈ 37.5%) a 5pp premium move ≈ 2pp of discount and a 10pp
+# move ≈ 4pp — these keep the flags at the same real-world sensitivity
+# the old premium-point thresholds (5/10) had.
+FLAG_PP = {"1d": 2.0, "1w": 2.0, "1m": 4.0}
 
 
 def _fmt_names(names: list[str]) -> str:
@@ -17,42 +28,58 @@ def _fmt_names(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+def _discount_delta(t: pd.DataFrame, col: str) -> pd.Series:
+    """Per-company change of the H discount over the window whose
+    premium change is stored in `col` (result in discount points)."""
+    now = t["Premium calc (%)"]
+    return (metrics.premium_to_discount(now)
+            - metrics.premium_to_discount(now - t[col]))
+
+
+def _direction(med: float) -> str:
+    return ("narrowed" if med < -0.05 else
+            "widened" if med > 0.05 else "was broadly unchanged")
+
+
 def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
     focus = table[table["Classification"] == config.FOCUS].dropna(
-        subset=["Δ1d (pp)"])
+        subset=["Δ1d (pp)"]).copy()
     rest = table[table["Classification"] != config.FOCUS].dropna(
-        subset=["Δ1d (pp)"])
+        subset=["Δ1d (pp)"]).copy()
     parts = []
 
     if not focus.empty:
-        med = focus["Δ1d (pp)"].median()
-        direction = ("narrowed" if med < -0.05 else
-                     "widened" if med > 0.05 else "was broadly unchanged")
-        top = focus.reindex(focus["Δ1d (pp)"].sort_values().index).head(3)
+        focus["dd"] = _discount_delta(focus, "Δ1d (pp)")
+        med = focus["dd"].median()
+        top = focus.sort_values("dd").head(3)      # deepest narrowing
         drivers = attribution[attribution["Company"].isin(top["Company"])]
-        h_driven = drivers["Driver"].str.contains("H-share").sum() if not drivers.empty else 0
+        h_driven = drivers["Driver"].str.contains("H-share").sum() \
+            if not drivers.empty else 0
         cause = ("mainly because their H shares outperformed their "
                  "corresponding A shares" if h_driven >= 2 else
                  "driven by a mix of A-share and H-share moves")
+        amount = (f" by {abs(med):.1f} percentage points"
+                  if abs(med) > 0.05 else "")
         parts.append(
-            f"**Focus Holdings:** The median premium among focus holdings "
-            f"{direction} by {abs(med):.1f} percentage points today. "
-            f"The largest narrowing occurred in "
+            f"**Focus Holdings:** The median H-share discount among focus "
+            f"holdings {_direction(med)}{amount} today. "
+            f"The discounts that narrowed most were "
             f"{_fmt_names(list(top['Company']))}, {cause}.")
 
     if not rest.empty:
-        med = rest["Δ1d (pp)"].median()
-        direction = ("narrowed" if med < -0.05 else
-                     "widened" if med > 0.05 else "was broadly unchanged")
-        big = rest[rest["Δ1d (pp)"].abs() > 5]
-        flag = (f" {len(big)} non-focus companies recorded premium movements "
-                f"of more than five percentage points and were flagged for "
-                f"review ({_fmt_names(list(big['Company'].head(5)))})."
+        rest["dd"] = _discount_delta(rest, "Δ1d (pp)")
+        med = rest["dd"].median()
+        big = rest[rest["dd"].abs() > FLAG_PP["1d"]]
+        flag = (f" {len(big)} non-focus companies recorded discount "
+                f"movements of more than {FLAG_PP['1d']:.0f} percentage "
+                f"points and were flagged for review "
+                f"({_fmt_names(list(big['Company'].head(5)))})."
                 if not big.empty else "")
         parts.append(
-            f"**Broader A–H Market:** Across the rest of the A–H universe, "
-            f"the median premium {direction}"
-            + (f" by {abs(med):.1f} percentage points" if abs(med) > 0.05 else "")
+            f"**Broader A–H Market:** Across the rest of the A–H "
+            f"universe, the median H-share discount {_direction(med)}"
+            + (f" by {abs(med):.1f} percentage points"
+               if abs(med) > 0.05 else "")
             + f".{flag}")
 
     warn = table[table["Quality"].isin(["stale", "failed"])]
@@ -71,41 +98,43 @@ def period_commentary(table: pd.DataFrame, period: str) -> str:
     Same Focus-first structure as the daily note, over a longer window."""
     col = {"1w": "Δ1w (pp)", "1m": "Δ1m (pp)"}[period]
     label = {"1w": "week", "1m": "month"}[period]
-    focus = table[table["Classification"] == config.FOCUS].dropna(subset=[col])
-    rest = table[table["Classification"] != config.FOCUS].dropna(subset=[col])
+    focus = table[table["Classification"] == config.FOCUS].dropna(
+        subset=[col]).copy()
+    rest = table[table["Classification"] != config.FOCUS].dropna(
+        subset=[col]).copy()
     parts = []
 
     if not focus.empty:
-        med = focus[col].median()
-        direction = ("narrowed" if med < -0.05 else
-                     "widened" if med > 0.05 else "was broadly unchanged")
-        nar = focus.sort_values(col).head(3)
-        wid = focus.sort_values(col, ascending=False).head(3)
+        focus["dd"] = _discount_delta(focus, col)
+        med = focus["dd"].median()
+        nar = focus.sort_values("dd").head(3)
+        wid = focus.sort_values("dd", ascending=False).head(3)
         amount = (f" by {abs(med):.1f} percentage points"
                   if abs(med) > 0.05 else "")
         parts.append(
-            f"**Focus Holdings ({label}):** The median premium among focus "
-            f"holdings {direction}{amount} over "
-            f"the past {label}. Largest narrowing: "
-            f"{_fmt_names(list(nar['Company']))} "
-            f"({', '.join(f'{v:+.1f}pp' for v in nar[col])}). "
-            f"Largest widening: {_fmt_names(list(wid['Company']))} "
-            f"({', '.join(f'{v:+.1f}pp' for v in wid[col])}).")
+            f"**Focus Holdings ({label}):** The median H-share discount "
+            f"among focus holdings {_direction(med)}{amount} over "
+            f"the past {label}. Discounts that narrowed most "
+            f"(H catching up): {_fmt_names(list(nar['Company']))} "
+            f"({', '.join(f'{v:+.1f}pp' for v in nar['dd'])}). "
+            f"Widened most (H relatively cheaper): "
+            f"{_fmt_names(list(wid['Company']))} "
+            f"({', '.join(f'{v:+.1f}pp' for v in wid['dd'])}).")
 
     if not rest.empty:
-        med = rest[col].median()
-        direction = ("narrowed" if med < -0.05 else
-                     "widened" if med > 0.05 else "was broadly unchanged")
-        thr = 5 if period == "1w" else 10
-        big = rest[rest[col].abs() > thr]
+        rest["dd"] = _discount_delta(rest, col)
+        med = rest["dd"].median()
+        thr = FLAG_PP[period]
+        big = rest[rest["dd"].abs() > thr]
         noun = "company" if len(big) == 1 else "companies"
-        flag = (f" {len(big)} {noun} moved more than {thr}pp and "
-                f"{'was' if len(big) == 1 else 'were'} flagged for review "
+        flag = (f" {len(big)} {noun} moved more than {thr:.0f}pp of "
+                f"discount and {'was' if len(big) == 1 else 'were'} "
+                f"flagged for review "
                 f"({_fmt_names(list(big['Company'].head(5)))})."
                 if not big.empty else "")
         parts.append(
             f"**Broader A–H Market ({label}):** Across the rest of the "
-            f"universe, the median premium {direction}"
+            f"universe, the median H-share discount {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points" if abs(med) > 0.05
                else "") + f".{flag}")
 
@@ -114,7 +143,8 @@ def period_commentary(table: pd.DataFrame, period: str) -> str:
     if not ext.empty:
         parts.append(f"**52-week extremes:** "
                      f"{_fmt_names(list(ext['Company'].head(6)))} are at or "
-                     f"near 52-week premium extremes.")
+                     f"near 52-week discount extremes (the percentile is "
+                     f"identical in premium or discount terms).")
     if (table["Quality"] == "sample").all():
         parts.append("_All figures are Phase 1 synthetic sample data._")
     return "\n\n".join(parts) if parts else "Not enough history yet."
@@ -123,25 +153,25 @@ def period_commentary(table: pd.DataFrame, period: str) -> str:
 def closing_summary(table: pd.DataFrame, attribution: pd.DataFrame,
                     sector_stats: pd.DataFrame) -> str:
     """Short factual closing summary across the full universe."""
-    t = table.dropna(subset=["Δ1d (pp)"])
+    t = table.dropna(subset=["Δ1d (pp)"]).copy()
     if t.empty:
         return "No observations today."
-    med = t["Δ1d (pp)"].median()
-    overall = ("narrowed" if med < -0.05 else
-               "widened" if med > 0.05 else "was broadly unchanged")
+    t["dd"] = _discount_delta(t, "Δ1d (pp)")
+    med = t["dd"].median()
     sect = sector_stats.dropna(subset=["Δ1m median (pp)"])
     lead = sect.reindex(sect["Δ1m median (pp)"].abs()
                         .sort_values(ascending=False).index).head(2)
-    movers = t.reindex(t["Δ1d (pp)"].abs()
+    movers = t.reindex(t["dd"].abs()
                        .sort_values(ascending=False).index).head(3)
-    mv = "; ".join(f"{r['Company']} {r['Δ1d (pp)']:+.1f}pp"
+    mv = "; ".join(f"{r['Company']} {r['dd']:+.1f}pp"
                    for _, r in movers.iterrows())
     att = attribution.head(3)
-    h_share = att["Driver"].str.contains("H-share").mean() if not att.empty else 0
+    h_share = att["Driver"].str.contains("H-share").mean() \
+        if not att.empty else 0
     driver_line = ("H-share price action drove most of the largest moves."
                    if h_share > 0.5 else
                    "A-share price action (or FX) drove most of the largest moves.")
-    return (f"The overall A-share premium {overall} today "
-            f"(median {med:+.1f}pp). Sector leadership: "
-            f"{_fmt_names(list(lead['Sector']))}. "
-            f"Largest individual changes: {mv}. {driver_line}")
+    return (f"The typical H-share discount {_direction(med)} today "
+            f"(median {med:+.1f}pp; negative = H catching up). "
+            f"Sector leadership: {_fmt_names(list(lead['Sector']))}. "
+            f"Largest individual discount changes: {mv}. {driver_line}")
