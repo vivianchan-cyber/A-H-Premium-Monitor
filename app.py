@@ -189,7 +189,7 @@ with st.sidebar:
 
 # -------------------------------------------------------------------- tabs
 tabs = st.tabs(["Stock Monitor", "Buy-level watch", "Market Overview",
-                "Attribution", "Rankings", "Sectors", "Charts", "Alerts",
+                "Attribution", "Sectors", "Charts", "Alerts",
                 "Commentary", "Health"])
 
 # ------------------------------------------------------- 3 Market Overview
@@ -823,51 +823,8 @@ with tabs[3]:
         fig.update_layout(title="Companies by main driver (today)")
         st.plotly_chart(styled(fig, 300), use_container_width=True)
 
-# ------------------------------------------------------------ 4 Rankings
+# ------------------------------------------------------------- 4 Sectors
 with tabs[4]:
-    # Same three groups as the Stock Monitor (always unfiltered here).
-    rank_scopes = {
-        "Focus A-H Holdings":
-            table[table["Classification"] == config.FOCUS],
-        "Other A-H Stocks":
-            table[table["Classification"] != config.FOCUS],
-        "Full A-H Universe": table,
-    }
-    st.markdown(
-        "**Read everything as H-share upside** (the H leg is the one a "
-        "southbound/foreign investor can buy, and the working thesis is "
-        "that H converges toward A over time). *H discount to A* is how "
-        "far the H share trades below its A twin — a 100% premium means "
-        "the H share costs half the A price, so full convergence would "
-        "return the premium itself. Full convergence has been rare "
-        "historically, so the conservative anchor is each company's own "
-        "5-year median premium: **H upside to 5y median** is the H-share "
-        "return if today's premium merely reverts to that norm (A price "
-        "and FX unchanged). Positive = the discount is wider than usual "
-        "→ extra reversion upside; negative = the premium is already "
-        "narrower than its own norm — the convergence you are betting on "
-        "has largely played out. Always compare a company against its "
-        "*own* history: absolute premium levels differ hugely across "
-        "companies.")
-    c1, c2 = st.columns(2)
-    scope = c1.selectbox("Universe", list(rank_scopes))
-    key = c2.selectbox("Ranking", list(metrics.RANKINGS))
-    rk = metrics.rankings(rank_scopes[scope], key)
-    st.dataframe(
-        rk, hide_index=True, use_container_width=True,
-        column_config={c: st.column_config.NumberColumn(format="%.2f")
-                       for c in rk.columns
-                       if rk[c].dtype.kind in "fi"})
-    st.caption("Click any column header to re-sort.")
-    st.markdown("##### 52-week premium extremes (full universe)")
-    ext = metrics.extremes_52w(table)
-    if ext.empty:
-        st.info("No company is at a 52-week premium extreme today.")
-    else:
-        st.dataframe(ext.style.format(precision=2), use_container_width=True)
-
-# ------------------------------------------------------------- 5 Sectors
-with tabs[5]:
     st.markdown(
         "Each company is assigned to one of eight sectors in the "
         "sector map (`config/sector_map.csv`, applied automatically by "
@@ -900,7 +857,7 @@ with tabs[5]:
                "(premium narrowing); a rising line means widening.")
 
 # -------------------------------------------------------------- 6 Charts
-with tabs[6]:
+with tabs[5]:
     pick = st.selectbox("Company", table["Company"].sort_values(),
                         key="chart_pick")
     cid = int(table[table["Company"] == pick].iloc[0]["company_id"])
@@ -960,7 +917,7 @@ with tabs[6]:
     st.plotly_chart(styled(fig, 300), use_container_width=True)
 
 # -------------------------------------------------------------- 7 Alerts
-with tabs[7]:
+with tabs[6]:
     if st.button("Evaluate alert rules now", type="primary"):
         fired = alerts.evaluate(conn, table)
         st.session_state["fired"] = fired
@@ -978,7 +935,7 @@ with tabs[7]:
         st.dataframe(db.alerts_df(conn), use_container_width=True)
 
 # ---------------------------------------------------------- 8 Commentary
-with tabs[8]:
+with tabs[7]:
     st.subheader("Automated daily commentary (template, calculated facts)")
     st.markdown(commentary.daily_commentary(table, att))
     st.divider()
@@ -1005,7 +962,7 @@ with tabs[8]:
                 st.divider()
 
 # --------------------------------------------------------------- 9 Health
-with tabs[9]:
+with tabs[8]:
     st.subheader("Data-source health")
     st.markdown(
         "This panel tells you **whether each data feed is actually working** "
