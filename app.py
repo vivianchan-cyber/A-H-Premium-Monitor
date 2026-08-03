@@ -226,8 +226,8 @@ with tabs[2]:
                     "their H twins, i.e. the H discount grew); negative = "
                     "the gap narrowed.")
 
-        # ------- executive summary: five primary figures
-        cols = st.columns(5)
+        # ------- executive summary: six primary figures
+        cols = st.columns(6)
         cols[0].metric("HSAHP Index", f"{v['current']:.2f}",
                        help="The Hang Seng Stock Connect China AH Premium "
                             "Index: the size-weighted average price gap "
@@ -240,8 +240,21 @@ with tabs[2]:
                        f"{v['current'] - 100:.2f}%",
                        help="HSAHP Index − 100. The average extra price "
                             "of the A share over the same company's "
-                            "H share, across the index constituents.")
-        cols[2].metric(f"{wl} percentile" if v["sufficient"]
+                            "H share, across the index constituents. "
+                            "The index is published in premium terms — "
+                            "the next tile translates it to the "
+                            "H-buyer's view.")
+        _imp_disc = metrics.premium_to_discount(v["current"] - 100)
+        cols[2].metric("Implied H discount",
+                       f"{_imp_disc:.2f}%",
+                       help="The same index fact from the H-buyer's "
+                            "side: with the implied average premium in "
+                            "the previous tile, the typical index "
+                            "constituent's H share trades at this "
+                            "discount to its A twin (discount = premium "
+                            "÷ (100 + premium) × 100). Derived by "
+                            "arithmetic from the published index value.")
+        cols[3].metric(f"{wl} percentile" if v["sufficient"]
                        else "Percentile",
                        f"{v['percentile']:.2f}%" if v["sufficient"]
                        else NO_HIST, help=PCTILE_HELP)
@@ -249,9 +262,9 @@ with tabs[2]:
         # "relative to history" qualification
         status_short = (status.replace(" relative to history", "")
                         if status else NO_HIST)
-        cols[3].metric("Historical relative valuation", status_short,
+        cols[4].metric("Historical relative valuation", status_short,
                        help=STATUS_HELP)
-        cols[4].metric(f"Distance from {wl} median" if v["sufficient"]
+        cols[5].metric(f"Distance from {wl} median" if v["sufficient"]
                        else "Distance from median",
                        (metrics.format_change_pts(v["diff_pts"])
                         if v["sufficient"] else NO_HIST),
@@ -812,7 +825,14 @@ with tabs[3]:
         "mainly because the H share rallied, the driver is *H-share "
         "outperformance*; when no single factor dominates it says "
         "*Combination of factors*. Everything is arithmetic from actual "
-        "prices and FX — nothing is inferred.")
+        "prices and FX — nothing is inferred.\n\n"
+        "*Why this tab uses premium points while the rest of the "
+        "dashboard speaks H-discount:* the three contributions add up "
+        "exactly to the total move only in premium terms — the discount "
+        "is a non-linear transform of the same fact, so discount-space "
+        "contributions would not sum. This is deliberately the one "
+        "premium-denominated page; the direction reading is unchanged "
+        "(a negative move = gap narrowing = H catching up).")
     st.dataframe(att.style.format(precision=2, na_rep="—"),
                  use_container_width=True, height=480)
     if not att.empty:

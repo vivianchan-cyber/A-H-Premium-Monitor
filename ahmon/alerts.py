@@ -5,7 +5,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-from . import config, db
+from . import config, db, metrics
+
+
+def _disc_move(premium_now: float, delta_pp: float) -> float:
+    """Discount-point equivalent of a premium move ending at
+    premium_now: today's discount minus the window-start discount."""
+    return (metrics.premium_to_discount(premium_now)
+            - metrics.premium_to_discount(premium_now - delta_pp))
 
 
 def evaluate(conn, table: pd.DataFrame,
@@ -26,18 +33,38 @@ def evaluate(conn, table: pd.DataFrame,
                       "message": message})
         db.log_alert(conn, rule, message, company, severity)
 
+    # Market-move alerts are worded in the owner's H-discount view (the
+    # equivalent premium move rides along in brackets); trigger
+    # thresholds stay defined on the premium so historical tuning and
+    # dedupe continuity are untouched. Data-integrity alerts
+    # (calc_vs_source, staleness) keep premium wording — they compare us
+    # against sources that publish premiums.
+    def _move_msg(prem, delta_pp, window: str, threshold: float) -> str:
+        """Discount-view wording, falling back to plain premium points
+        when the row carries no premium level to transform from."""
+        if prem is not None and not pd.isna(prem):
+            d = _disc_move(prem, delta_pp)
+            return (f"H-share discount to A-shares "
+                    f"{'widened' if d > 0 else 'narrowed'} "
+                    f"{abs(d):.1f}pp {window} "
+                    f"(premium move {delta_pp:+.1f}pp, threshold "
+                    f"±{threshold:.0f}pp)")
+        return (f"{window} premium move {delta_pp:+.1f}pp "
+                f"(threshold ±{threshold:.0f}pp)")
+
     for _, r in table.iterrows():
         name = r["Company"]
+        prem = r.get("Premium calc (%)")
         if r["Δ1d (pp)"] is not None and \
                 abs(r["Δ1d (pp)"]) > config.ALERT_DAILY_PREMIUM_MOVE_PP:
             fire("daily_premium_move", name,
-                 f"1-day premium move {r['Δ1d (pp)']:+.1f}pp "
-                 f"(threshold ±{config.ALERT_DAILY_PREMIUM_MOVE_PP:.0f}pp)")
+                 _move_msg(prem, r["Δ1d (pp)"], "in a day",
+                           config.ALERT_DAILY_PREMIUM_MOVE_PP))
         if r["Δ1m (pp)"] is not None and \
                 abs(r["Δ1m (pp)"]) > config.ALERT_MONTHLY_PREMIUM_MOVE_PP:
             fire("monthly_premium_move", name,
-                 f"1-month premium move {r['Δ1m (pp)']:+.1f}pp "
-                 f"(threshold ±{config.ALERT_MONTHLY_PREMIUM_MOVE_PP:.0f}pp)")
+                 _move_msg(prem, r["Δ1m (pp)"], "over a month",
+                           config.ALERT_MONTHLY_PREMIUM_MOVE_PP))
         if r["H % change today"] is not None and \
                 abs(r["H % change today"]) > config.ALERT_H_PRICE_MOVE_PCT:
             fire("h_price_move", name,
@@ -45,15 +72,18 @@ def evaluate(conn, table: pd.DataFrame,
                  f"(threshold ±{config.ALERT_H_PRICE_MOVE_PCT:.0f}%)")
         if r["52w percentile"] is not None:
             if r["52w percentile"] >= 98:
-                fire("52w_extreme", name, "Premium at/near 52-week high",
-                     "info")
+                fire("52w_extreme", name,
+                     "H-share discount to A-shares at/near its 52-week "
+                     "widest", "info")
             elif r["52w percentile"] <= 2:
-                fire("52w_extreme", name, "Premium at/near 52-week low",
-                     "info")
+                fire("52w_extreme", name,
+                     "H-share discount to A-shares at/near its 52-week "
+                     "narrowest", "info")
         if r["Premium z (1y)"] is not None and \
                 abs(r["Premium z (1y)"]) > config.ALERT_ZSCORE:
             fire("premium_zscore", name,
-                 f"Premium {r['Premium z (1y)']:+.1f}σ from 1-year average")
+                 f"A–H gap {r['Premium z (1y)']:+.1f}σ from its 1-year "
+                 f"average (z-score measured on the premium series)")
         if r["Calc-src diff (pp)"] is not None and \
                 abs(r["Calc-src diff (pp)"]) > config.ALERT_DISCREPANCY_PP:
             fire("calc_vs_source", name,
