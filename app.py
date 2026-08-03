@@ -29,7 +29,7 @@ def styled(fig: go.Figure, height=380) -> go.Figure:
     fig.update_layout(
         height=height, plot_bgcolor=INK["surface"], paper_bgcolor=INK["surface"],
         font=dict(family="system-ui, sans-serif", color=INK["secondary"],
-                  size=14),
+                  size=13),
         margin=dict(l=10, r=10, t=36, b=10),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
