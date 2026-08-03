@@ -1009,18 +1009,18 @@ def att_over(version: int, days: int) -> pd.DataFrame:
 
 
 with tabs[6]:
-    st.subheader("Automated daily commentary (template, calculated facts)")
+    st.subheader("Daily commentary (template, calculated facts)")
     st.markdown(commentary.daily_commentary(table, att))
     st.divider()
     st.subheader("Closing summary")
     st.markdown(commentary.closing_summary(
         table, att, metrics.sector_stats(conn, table)))
     st.divider()
-    st.subheader("Automated weekly commentary")
+    st.subheader("Weekly commentary")
     st.markdown(commentary.period_commentary(
         table, "1w", att_over(st.session_state["data_version"], 7)))
     st.divider()
-    st.subheader("Automated monthly commentary")
+    st.subheader("Monthly commentary")
     st.markdown(commentary.period_commentary(
         table, "1m", att_over(st.session_state["data_version"], 30)))
     st.caption("Every 'cause' sentence is counted from the Attribution "
