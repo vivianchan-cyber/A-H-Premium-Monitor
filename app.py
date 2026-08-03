@@ -1009,7 +1009,7 @@ def att_over(version: int, days: int) -> pd.DataFrame:
 
 
 with tabs[6]:
-    st.subheader("Daily commentary (template, calculated facts)")
+    st.subheader("Daily commentary")
     st.markdown(commentary.daily_commentary(table, att))
     st.divider()
     st.subheader("Closing summary")
