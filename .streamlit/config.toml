@@ -1,8 +1,8 @@
 [theme]
-# Larger type for readability (senior-friendly): everything scales from
-# this — body text, captions, and dataframe cells. Streamlit default: 16;
-# 18 felt one step too big to the owner, so 17.
-baseFontSize = 17
+# Base type size — body text, captions, and dataframe cells all scale
+# from this. 16 is the Streamlit default; the owner tried 18 and 17
+# and settled back on 16. Tables keep the roomier 40px rows.
+baseFontSize = 16
 
 [server]
 headless = true
