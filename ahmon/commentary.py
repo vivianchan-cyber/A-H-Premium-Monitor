@@ -191,11 +191,26 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
                 if not big.empty else "")
         parts.append(
             f"**Broader A–H Market:** Across the rest of the A–H "
-            f"universe, the median H-share discount {_direction(med)}"
+            f"universe (excluding focus holdings), the median H-share "
+            f"discount {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
             + f".{flag}"
             + _driver_sentence(attribution, rest["Company"]))
+
+    both = table.dropna(subset=["Δ1d (pp)"]).copy()
+    if not both.empty:
+        both["dd"] = _discount_delta(both, "Δ1d (pp)")
+        med = both["dd"].median()
+        level = metrics.premium_to_discount(
+            both["Premium calc (%)"]).median()
+        parts.append(
+            f"**Full A–H Universe:** Taking focus holdings and the rest "
+            f"together, the median H-share discount across all "
+            f"{len(both)} companies {_direction(med)}"
+            + (f" by {abs(med):.1f} percentage points"
+               if abs(med) > 0.05 else "")
+            + f" today and stands at {level:.1f}%.")
 
     warn = table[table["Quality"].isin(["stale", "failed"])]
     if not warn.empty:
@@ -255,11 +270,26 @@ def period_commentary(table: pd.DataFrame, period: str,
                 if not big.empty else "")
         parts.append(
             f"**Broader A–H Market ({label}):** Across the rest of the "
-            f"universe, the median H-share discount {_direction(med)}"
+            f"universe (excluding focus holdings), the median H-share "
+            f"discount {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points" if abs(med) > 0.05
                else "") + f".{flag}"
             + _driver_sentence(attribution, rest["Company"],
                                style=label, min_move_pp=2.0))
+
+    both = table.dropna(subset=[col]).copy()
+    if not both.empty:
+        both["dd"] = _discount_delta(both, col)
+        med = both["dd"].median()
+        level = metrics.premium_to_discount(
+            both["Premium calc (%)"]).median()
+        parts.append(
+            f"**Full A–H Universe ({label}):** Taking focus holdings and "
+            f"the rest together, the median H-share discount across all "
+            f"{len(both)} companies {_direction(med)}"
+            + (f" by {abs(med):.1f} percentage points"
+               if abs(med) > 0.05 else "")
+            + f" over the past {label} and stands at {level:.1f}%.")
 
     hi = table.dropna(subset=["52w percentile"])
     ext = hi[(hi["52w percentile"] >= 98) | (hi["52w percentile"] <= 2)]

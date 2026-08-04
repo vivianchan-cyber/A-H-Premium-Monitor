@@ -177,6 +177,22 @@ def test_no_robotic_phrases_in_rendered_commentary():
         assert "(1 name" not in text and "names)" not in text
 
 
+def test_exclusion_explicit_and_full_universe_paragraph():
+    t = make_table()
+    t.loc[:, "Δ1w (pp)"] = [-10.0, -6.0]
+    daily = commentary.daily_commentary(
+        t, pd.DataFrame(columns=["Company", "Driver"]))
+    assert "(excluding focus holdings)" in daily
+    assert "**Full A–H Universe:**" in daily
+    assert "across all 2 companies" in daily
+    # discount levels: 100% prem → 50.0, 50% prem → 33.3; median 41.7
+    assert "stands at 41.7%" in daily
+    wk = commentary.period_commentary(t, "1w")
+    assert "(excluding focus holdings)" in wk
+    assert "**Full A–H Universe (week):**" in wk
+    assert "over the past week and stands at 41.7%" in wk
+
+
 def test_period_commentary_gains_driver_sentence():
     t = make_table()
     t.loc[:, "Δ1w (pp)"] = [-10.0, -6.0]
