@@ -582,13 +582,15 @@ with tabs[1]:
                             help=f"Basis: {_row['DPS basis']}.")
                 m[1].metric("Current price", f"HK${float(_price):,.2f}",
                             help=f"As of {_row['As of']}.")
-                m[2].metric("Target yield", f"{_target:.1f}%")
-                m[3].metric("Required price", f"HK${_req:,.2f}",
+                m[2].metric("Current yield",
+                            f"{float(_dps) / float(_price) * 100:.2f}%",
+                            help="DPS used ÷ current price — what the "
+                                 "stock yields at today's price.")
+                m[3].metric("Target yield", f"{_target:.1f}%")
+                m[4].metric("Required price", f"HK${_req:,.2f}",
                             help="DPS ÷ target yield: the price at "
                                  "which this DPS pays exactly the "
                                  "target.")
-                m[4].metric("Current yield",
-                            f"{float(_dps) / float(_price) * 100:.2f}%")
                 m[5].metric("Position vs required",
                             _pos_text.replace(" target price", ""),
                             help="'Below' = today's price is under the "
