@@ -49,13 +49,34 @@ _LEG_WORDS = {
     "a_weak": ("narrowed", "weaker A-share performance"),
 }
 
+_CONTRIB_COLS = {"a": "A contribution (pp)", "h": "H contribution (pp)",
+                 "fx": "FX contribution (pp)"}
+
+
+def _dominant_leg(att_rows: pd.DataFrame | None) -> tuple[str, float] | None:
+    """('a'|'h'|'fx', summed pp) for the leg with the largest total
+    contribution across these rows — both leg columns are oriented so
+    positive pushes the premium (and hence the discount) up. None when
+    the rows carry no contribution columns or the sums are all ~zero."""
+    if att_rows is None or att_rows.empty or \
+            not all(c in att_rows.columns for c in _CONTRIB_COLS.values()):
+        return None
+    sums = {leg: att_rows[col].sum(skipna=True)
+            for leg, col in _CONTRIB_COLS.items()}
+    leg = max(sums, key=lambda k: abs(sums[k]))
+    if pd.isna(sums[leg]) or abs(sums[leg]) < 1e-9:
+        return None
+    return leg, sums[leg]
+
 
 def _driver_sentence(att: pd.DataFrame, companies, style: str = "week",
                      min_move_pp: float = 1.0) -> str:
     """One concise sentence naming the main price-leg driver of the
     window's larger moves: the attribution category with the highest
-    count of names. A tie between the top two categories is reported
-    as no single driver dominant — never forced. Weekly and monthly
+    count of names. A top count of "Combination of factors" is resolved
+    to the leg with the largest summed contribution — the sentence must
+    name a leg, never "movements in both". A tie between the top two
+    categories is reported as no single driver dominant. Weekly and monthly
     phrasing differ slightly so stored notes don't read as one
     repeated template. Returns '' when attribution is unavailable."""
     if att is None or att.empty:
@@ -80,8 +101,19 @@ def _driver_sentence(att: pd.DataFrame, companies, style: str = "week",
              "movements, with no single driver dominant.")
         return " " + ((prefix + s) if prefix else s[0].upper() + s[1:])
     if top == "both":
-        s = "the change mainly reflected movements in both the A- and H-shares."
-        return " " + ((prefix + s) if prefix else s[0].upper() + s[1:])
+        # "Combination of factors" only means no leg cleared 60% within
+        # single names — summed across the flagged names one leg still
+        # dominates, so name it instead of printing filler (owner rule:
+        # never say "movements in both the A- and H-shares")
+        dom = _dominant_leg(sub)
+        if dom is None:
+            s = ("the change reflected a combination of A-share and "
+                 "H-share movements, with no single driver dominant.")
+            return " " + ((prefix + s) if prefix else s[0].upper() + s[1:])
+        leg, val = dom
+        top = ("fx" if leg == "fx" else
+               (("h_weak" if val > 0 else "h_strong") if leg == "h" else
+                ("a_strong" if val > 0 else "a_weak")))
     if top == "fx":
         s = ("the change was mainly associated with movements in the "
              "CNY/HKD exchange rate.")
@@ -119,19 +151,34 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
         focus["dd"] = _discount_delta(focus, "Δ1d (pp)")
         med = focus["dd"].median()
         top = focus.sort_values("dd").head(3)      # deepest narrowing
-        drivers = attribution[attribution["Company"].isin(top["Company"])]
-        h_driven = drivers["Driver"].str.contains("H-share").sum() \
-            if not drivers.empty else 0
-        cause = ("mainly because their H shares outperformed their "
-                 "corresponding A shares" if h_driven >= 2 else
-                 "reflecting movements in both the A- and H-shares")
+        drivers = attribution[attribution["Company"].isin(top["Company"])] \
+            if attribution is not None and not attribution.empty \
+            else pd.DataFrame()
+        # name the dominant price leg for these three, or say nothing:
+        # a vague "movements in both" clause is banned wording
+        dom = _dominant_leg(drivers)
+        cause = ""
+        if dom is not None:
+            leg, val = dom
+            phrase = {
+                ("h", False): "their H shares outperformed their "
+                              "corresponding A shares",
+                ("h", True): "their H shares lagged their "
+                             "corresponding A shares",
+                ("a", True): "their A shares outperformed their "
+                             "corresponding H shares",
+                ("a", False): "their A shares weakened against their "
+                              "corresponding H shares",
+            }.get((leg, val > 0))
+            cause = (", mainly reflecting the CNY/HKD exchange-rate move"
+                     if phrase is None else f", mainly because {phrase}")
         amount = (f" by {abs(med):.1f} percentage points"
                   if abs(med) > 0.05 else "")
         parts.append(
             f"**Focus Holdings:** The median H-share discount among focus "
             f"holdings {_direction(med)}{amount} today. "
             f"The discounts that narrowed most were "
-            f"{_fmt_names(list(top['Company']))}, {cause}.")
+            f"{_fmt_names(list(top['Company']))}{cause}.")
 
     if not rest.empty:
         rest["dd"] = _discount_delta(rest, "Δ1d (pp)")

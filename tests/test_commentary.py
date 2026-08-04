@@ -30,6 +30,19 @@ def test_daily_commentary_in_discount_points():
     assert "premium" not in text.lower()
 
 
+def test_daily_cause_names_a_leg_or_stays_silent():
+    # with contributions the daily note names the leg behind the top
+    # narrowers; without them it drops the clause — never vague filler
+    att = with_contribs(att_of(["Combination of factors"]), h=-4.0, a=1.0)
+    att.loc[0, "Company"] = "Bank of China"        # the focus name
+    text = commentary.daily_commentary(make_table(), att)
+    assert ("mainly because their H shares outperformed their "
+            "corresponding A shares") in text
+    bare = commentary.daily_commentary(
+        make_table(), pd.DataFrame(columns=["Company", "Driver"]))
+    assert "movements in both" not in bare and "mainly because" not in bare
+
+
 def test_discount_delta_math():
     t = make_table().dropna(subset=["Δ1d (pp)"])
     dd = commentary._discount_delta(t, "Δ1d (pp)")
@@ -54,6 +67,16 @@ def att_of(drivers, move=-8.0):
     })
 
 
+def with_contribs(att, a=0.0, h=0.0, fx=0.0):
+    """Attach summed-to contribution columns (evenly split per row)."""
+    n = len(att)
+    att = att.copy()
+    att["A contribution (pp)"] = a / n
+    att["H contribution (pp)"] = h / n
+    att["FX contribution (pp)"] = fx / n
+    return att
+
+
 ALL_COS = [f"Co{i}" for i in range(10)]
 
 
@@ -75,10 +98,37 @@ class TestDriverSentence:
             assert "H-share discount to A-shares" in s
             assert "H–A discount" not in s
 
-    def test_movement_in_both_legs_case(self):
+    def test_combination_resolves_to_dominant_leg(self):
+        # per-name "Combination of factors" must never print the vague
+        # "movements in both" filler — the summed contributions name the
+        # leg: here H pushed the premium down hardest (H outperformed)
+        att = with_contribs(att_of(["Combination of factors"] * 2),
+                            a=2.0, h=-6.0, fx=0.5)
+        s = commentary._driver_sentence(att, ALL_COS)
+        assert "narrowed mainly due to stronger H-share performance" in s
+        assert "movements in both" not in s
+
+    def test_combination_resolves_each_leg_direction(self):
+        base = att_of(["Combination of factors"] * 2)
+        cases = [
+            (dict(a=5.0, h=1.0), "stronger A-share performance"),
+            (dict(a=-5.0, h=1.0), "weaker A-share performance"),
+            (dict(a=1.0, h=6.0), "weaker H-share performance"),
+            (dict(a=1.0, h=0.0, fx=4.0), "CNY/HKD"),
+        ]
+        for kw, phrase in cases:
+            s = commentary._driver_sentence(with_contribs(base, **kw),
+                                            ALL_COS)
+            assert phrase in s, kw
+            assert "movements in both" not in s
+
+    def test_combination_without_contributions_stays_honest(self):
+        # attribution lacking contribution columns: report no dominant
+        # driver rather than invent one — and still never the filler
         s = commentary._driver_sentence(
             att_of(["Combination of factors"] * 2), ALL_COS)
-        assert "movements in both the A- and H-shares" in s
+        assert "no single driver dominant" in s
+        assert "movements in both" not in s
 
     def test_highest_count_wins(self):
         s = commentary._driver_sentence(
@@ -123,6 +173,7 @@ def test_no_robotic_phrases_in_rendered_commentary():
         low = text.lower()
         assert "cause" not in low
         assert "a mix of factors" not in low
+        assert "movements in both the a- and h-shares" not in low
         assert "(1 name" not in text and "names)" not in text
 
 
