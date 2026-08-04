@@ -530,6 +530,79 @@ with tabs[1]:
         "SMIC are shown but are not yield-based.")
     from ahmon import divwatch as _divwatch
     dw = _divwatch.build_topup_table(conn)
+
+    # ------- adjustable target-yield calculator (pure what-if: writes
+    # nothing; the watch table's saved 5%/6% thresholds are untouched)
+    _yb = dw[dw["Target yield (%)"].notna()] if not dw.empty else dw
+    if not _yb.empty:
+        with st.container(border=True):
+            st.markdown("##### 🎯 Target-yield calculator — what-if")
+            csel, cslide, cnum = st.columns([2, 2, 1])
+            _pick = csel.selectbox(
+                "Stock", list(_yb["Company"] + "  (" + _yb["Ticker"] + ")"),
+                key="calc_pick",
+                help="Yield-based names only. BYD, China Life and SMIC "
+                     "are not watched on dividend yield, so they are "
+                     "not offered here.")
+            _tick = _pick.rsplit("(", 1)[1].rstrip(")")
+            _row = dw.set_index("Ticker").loc[_tick]
+            _default = float(_row["Target yield (%)"])
+            _ks, _kn = f"calc_s_{_tick}", f"calc_n_{_tick}"
+            st.session_state.setdefault(_ks, _default)
+            st.session_state.setdefault(_kn, _default)
+
+            def _from_slider(ks=_ks, kn=_kn):
+                st.session_state[kn] = st.session_state[ks]
+
+            def _from_num(ks=_ks, kn=_kn):
+                st.session_state[ks] = st.session_state[kn]
+
+            cslide.slider("Target yield (%)", min_value=1.0,
+                          max_value=12.0, step=0.1, key=_ks,
+                          on_change=_from_slider)
+            cnum.number_input("or type it", min_value=1.0, max_value=12.0,
+                              step=0.1, format="%.1f", key=_kn,
+                              on_change=_from_num)
+            _target = float(st.session_state[_ks])
+
+            _dps = _row["DPS (HKD)"]
+            _price = _row["Price (HKD)"]
+            if pd.isna(_dps):
+                st.warning("**DPS required** — this name has no dividend "
+                           "figure yet (fetch dividend history or set a "
+                           "manual DPS in the admin section below).")
+            elif pd.isna(_price):
+                st.warning("No current price stored for this name yet.")
+            else:
+                _req = _divwatch.required_price(float(_dps), _target)
+                _pos_text, _ = _divwatch.position_vs_required(
+                    float(_price), _req)
+                m = st.columns(6)
+                m[0].metric("DPS used", f"HK${float(_dps):,.3f}",
+                            help=f"Basis: {_row['DPS basis']}.")
+                m[1].metric("Current price", f"HK${float(_price):,.2f}",
+                            help=f"As of {_row['As of']}.")
+                m[2].metric("Target yield", f"{_target:.1f}%")
+                m[3].metric("Required price", f"HK${_req:,.2f}",
+                            help="DPS ÷ target yield: the price at "
+                                 "which this DPS pays exactly the "
+                                 "target.")
+                m[4].metric("Current yield",
+                            f"{float(_dps) / float(_price) * 100:.2f}%")
+                m[5].metric("Position vs required",
+                            _pos_text.replace(" target price", ""),
+                            help="'Below' = today's price is under the "
+                                 "required price, so the yield at "
+                                 "today's price already beats the "
+                                 "target. 'Above' = the price must "
+                                 "fall that far to reach the target "
+                                 "yield.")
+                if abs(_target - _default) > 1e-9:
+                    st.caption(f"Temporary what-if only — this name's "
+                               f"saved watch threshold stays at "
+                               f"{_default:.1f}% ({_row['Classification']})"
+                               " and nothing is written to the database.")
+
     if dw.empty:
         st.info("Watchlist empty — an admin can seed it in the admin "
                 "section below.")

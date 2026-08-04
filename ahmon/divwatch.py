@@ -143,6 +143,34 @@ def topup_price(dps: float, target_yield_pct: float) -> float:
     return dps / (target_yield_pct / 100.0)
 
 
+# --------------------------------------------------- what-if calculator
+
+def required_price(annual_dps: float | None,
+                   target_yield_pct: float) -> float | None:
+    """Share price at which `annual_dps` yields exactly
+    `target_yield_pct` (a percentage, e.g. 5.0 → 5%). None when the
+    DPS is unavailable; zero/negative targets are rejected outright.
+    Purely a what-if computation — never touches stored thresholds."""
+    if target_yield_pct is None or pd.isna(target_yield_pct) \
+            or target_yield_pct <= 0:
+        raise ValueError("target yield must be a positive percentage")
+    if annual_dps is None or pd.isna(annual_dps) or annual_dps <= 0:
+        return None
+    return annual_dps / (target_yield_pct / 100.0)
+
+
+def position_vs_required(current_price: float,
+                         req_price: float) -> tuple[str, float]:
+    """Plain-language position of the current price against the
+    required price: ('23.5% below target price', -23.5). The text
+    never shows a bare negative number."""
+    pct = (current_price / req_price - 1.0) * 100.0
+    if abs(pct) < 0.05:
+        return "At target price", pct
+    side = "below" if pct < 0 else "above"
+    return f"{abs(pct):.1f}% {side} target price", pct
+
+
 def classify_topup(price: float, topup: float) -> tuple[str, float]:
     """(status, distance%). distance = how far the price sits above the
     top-up price; 0 or negative means at/below it."""

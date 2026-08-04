@@ -186,3 +186,49 @@ class TestTable:
         w = db.watchlist_df(conn).set_index("ticker")
         assert r["total"] == 20                    # nothing dropped
         assert w.loc["883.HK", "profile"] == "stable"   # updated
+
+
+class TestWhatIfCalculator:
+    def test_five_and_six_pct_target_yields(self):
+        # HK$0.35 at 5% -> HK$7.00 (the spec's example); 6% -> lower
+        assert divwatch.required_price(0.35, 5.0) == pytest.approx(7.00)
+        assert divwatch.required_price(1.20, 6.0) == pytest.approx(20.0)
+
+    def test_percentage_converted_before_dividing(self):
+        # 5.0 means five percent (divide by 0.05), never by 5
+        assert divwatch.required_price(0.303174, 5.0) == \
+            pytest.approx(6.06348)
+
+    def test_position_below_above_and_at_target(self):
+        text, pct = divwatch.position_vs_required(4.64, 6.06348)
+        assert text == "23.5% below target price"
+        assert pct == pytest.approx(-23.48, abs=0.01)
+        text, pct = divwatch.position_vs_required(7.17, 7.0032)
+        assert text == "2.4% above target price"
+        assert pct > 0
+        assert divwatch.position_vs_required(7.0, 7.0)[0] == \
+            "At target price"
+
+    def test_missing_dps_yields_no_price(self):
+        assert divwatch.required_price(None, 5.0) is None
+        assert divwatch.required_price(float("nan"), 5.0) is None
+        assert divwatch.required_price(0.0, 5.0) is None
+
+    def test_zero_or_negative_target_rejected(self):
+        with pytest.raises(ValueError):
+            divwatch.required_price(0.35, 0.0)
+        with pytest.raises(ValueError):
+            divwatch.required_price(0.35, -5.0)
+
+    def test_what_if_never_touches_saved_thresholds(self, tmp_path):
+        from ahmon import db
+        conn = db.connect(tmp_path / "t.db")
+        divwatch.seed_watchlist(conn)
+        saved = dict(divwatch.TARGET_YIELD)
+        divwatch.required_price(0.35, 9.9)          # wild what-if target
+        divwatch.position_vs_required(5.0, 3.54)
+        assert divwatch.TARGET_YIELD == saved       # module constant intact
+        assert db.approved_dps_df(conn).empty       # nothing written
+        w = db.watchlist_df(conn).set_index("ticker")
+        assert w.loc["941.HK", "profile"] == "stable"   # profile intact
+        conn.close()
