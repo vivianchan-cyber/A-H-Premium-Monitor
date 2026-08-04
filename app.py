@@ -586,11 +586,22 @@ with tabs[1]:
                             f"{float(_dps) / float(_price) * 100:.2f}%",
                             help="DPS used ÷ current price — what the "
                                  "stock yields at today's price.")
-                m[3].metric("Target yield", f"{_target:.1f}%")
-                m[4].metric("Required price", f"HK${_req:,.2f}",
-                            help="DPS ÷ target yield: the price at "
-                                 "which this DPS pays exactly the "
-                                 "target.")
+                # the what-if pair stands out in bold accent blue
+                def _accent(col, label, value, tip):
+                    col.markdown(
+                        f"<div title='{tip}'>"
+                        f"<div style='font-size:0.875rem;"
+                        f"color:{INK['secondary']}'>{label}</div>"
+                        f"<div style='font-size:2.1rem;font-weight:700;"
+                        f"color:{C['blue']};line-height:1.5'>{value}"
+                        f"</div></div>", unsafe_allow_html=True)
+
+                _accent(m[3], "Target yield", f"{_target:.1f}%",
+                        "Your what-if input — adjust with the slider "
+                        "or the box above.")
+                _accent(m[4], "Required price", f"HK${_req:,.2f}",
+                        "DPS ÷ target yield: the price at which this "
+                        "DPS pays exactly the target.")
                 m[5].metric("Position vs required",
                             _pos_text.replace(" target price", ""),
                             help="'Below' = today's price is under the "
