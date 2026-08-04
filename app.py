@@ -1023,6 +1023,10 @@ with tabs[6]:
     st.subheader("Monthly commentary")
     st.markdown(commentary.period_commentary(
         table, "1m", att_over(st.session_state["data_version"], 30)))
+    st.divider()
+    st.subheader("Yearly commentary")
+    st.markdown(commentary.period_commentary(
+        table, "1y", att_over(st.session_state["data_version"], 365)))
     st.caption("Every 'cause' sentence is counted from the Attribution "
                "tab's arithmetic decomposition over the matching window "
                "— daily causes from the 1-day decomposition, weekly and "

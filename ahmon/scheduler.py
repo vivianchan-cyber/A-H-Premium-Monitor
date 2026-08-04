@@ -76,6 +76,11 @@ def run_eod(conn) -> None:
             conn, "monthly",
             commentary.period_commentary(
                 table, "1m", metrics.attribution_over(conn, table, 30)))
+    if pd.Timestamp(nxt).year != now.year:                   # year's last session
+        db.insert_commentary(
+            conn, "yearly",
+            commentary.period_commentary(
+                table, "1y", metrics.attribution_over(conn, table, 365)))
     log.info("EOD snapshot + commentary stored (refresh: %s companies, "
              "%s buy-watch)", s.get("upserted"), s.get("buy_watch"))
 

@@ -135,3 +135,15 @@ def test_period_commentary_gains_driver_sentence():
     assert "narrowed mainly due to stronger H-share performance" in text
     # without attribution the paragraphs still render, minus the sentence
     assert "mainly due to" not in commentary.period_commentary(t, "1w")
+
+
+def test_yearly_commentary_variant():
+    s = commentary._driver_sentence(
+        att_of(["A-share outperformance"]), ALL_COS, style="year")
+    assert "Over the year, the wider H-share discount to A-shares " \
+           "was mainly due to stronger A-share performance" in s
+    t = make_table()
+    t.loc[:, "Δ1y (pp)"] = [-12.0, -8.0]
+    text = commentary.period_commentary(t, "1y")
+    assert "**Focus Holdings (year):**" in text
+    assert "over the past year" in text

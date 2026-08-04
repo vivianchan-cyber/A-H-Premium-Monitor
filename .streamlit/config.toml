@@ -1,8 +1,5 @@
-[theme]
-# Base type size — body text, captions, and dataframe cells all scale
-# from this. 16 is the Streamlit default; the owner tried 18 and 17
-# and settled back on 16. Tables keep the roomier 40px rows.
-baseFontSize = 16
+# Type size: Streamlit's default (the owner tried 18 and 17 before
+# settling on the default; tables keep roomier 40px rows separately).
 
 [server]
 headless = true

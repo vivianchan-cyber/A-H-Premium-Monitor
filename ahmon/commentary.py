@@ -17,7 +17,7 @@ from . import config, metrics
 # discount ≈ 37.5%) a 5pp premium move ≈ 2pp of discount and a 10pp
 # move ≈ 4pp — these keep the flags at the same real-world sensitivity
 # the old premium-point thresholds (5/10) had.
-FLAG_PP = {"1d": 2.0, "1w": 2.0, "1m": 4.0}
+FLAG_PP = {"1d": 2.0, "1w": 2.0, "1m": 4.0, "1y": 8.0}
 
 
 def _fmt_names(names: list[str]) -> str:
@@ -69,29 +69,27 @@ def _driver_sentence(att: pd.DataFrame, companies, style: str = "week",
         return ""
     tie = len(counts) >= 2 and counts.iloc[0] == counts.iloc[1]
     top = counts.index[0]
-    monthly = style == "month"
+    # week keeps the "The median … {direction} mainly due to …" form;
+    # month and year lead with an "Over the …" clause so the stored
+    # notes don't all read as one repeated template
+    prefix = {"month": "Over the month, ", "year": "Over the year, "} \
+        .get(style)
 
     if tie:
-        s = ("The change reflected a combination of A-share and H-share "
+        s = ("the change reflected a combination of A-share and H-share "
              "movements, with no single driver dominant.")
-        return " " + ("Over the month, the change reflected a "
-                      "combination of A-share and H-share movements, "
-                      "with no single driver dominant." if monthly else s)
+        return " " + ((prefix + s) if prefix else s[0].upper() + s[1:])
     if top == "both":
-        return " " + ("Over the month, the change mainly reflected "
-                      "movements in both the A- and H-shares." if monthly
-                      else "The change mainly reflected movements in "
-                           "both the A- and H-shares.")
+        s = "the change mainly reflected movements in both the A- and H-shares."
+        return " " + ((prefix + s) if prefix else s[0].upper() + s[1:])
     if top == "fx":
-        return " " + ("Over the month, the change was mainly associated "
-                      "with movements in the CNY/HKD exchange rate."
-                      if monthly else
-                      "The change was mainly associated with movements "
-                      "in the CNY/HKD exchange rate.")
+        s = ("the change was mainly associated with movements in the "
+             "CNY/HKD exchange rate.")
+        return " " + ((prefix + s) if prefix else s[0].upper() + s[1:])
     direction, perf = _LEG_WORDS[top]
-    if monthly:
+    if prefix:
         form = "wider" if direction == "widened" else "narrower"
-        return (f" Over the month, the {form} H-share discount to "
+        return (f" {prefix}the {form} H-share discount to "
                 f"A-shares was mainly due to {perf}.")
     return (f" The median H-share discount to A-shares {direction} "
             f"mainly due to {perf}.")
@@ -170,8 +168,8 @@ def period_commentary(table: pd.DataFrame, period: str,
     `attribution` should be the decomposition computed over the SAME
     window (metrics.attribution_over), so each paragraph can state what
     caused its moves."""
-    col = {"1w": "Δ1w (pp)", "1m": "Δ1m (pp)"}[period]
-    label = {"1w": "week", "1m": "month"}[period]
+    col = {"1w": "Δ1w (pp)", "1m": "Δ1m (pp)", "1y": "Δ1y (pp)"}[period]
+    label = {"1w": "week", "1m": "month", "1y": "year"}[period]
     focus = table[table["Classification"] == config.FOCUS].dropna(
         subset=[col]).copy()
     rest = table[table["Classification"] != config.FOCUS].dropna(
