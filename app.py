@@ -159,41 +159,26 @@ with st.sidebar:
     st.caption(f"Timezone: Asia/Singapore · "
                f"{datetime.now(config.TZ):%Y-%m-%d %H:%M} · "
                f"DB: `{db_label}`")
-    if n_sample == 0:
-        # All users may refresh (owner decision). Viewers get a 5-minute
-        # freshness guard so habitual pressing can't hammer the data
-        # sources for data the cron just wrote; admins keep the
-        # unconditional override.
+    if n_sample == 0 and IS_ADMIN:
+        # Admin-only by owner decision (the cron auto-refresh serves
+        # everyone else): the admin role is granted via AHMON_USERS and
+        # currently belongs solely to the owner — no email address is
+        # ever written into this source, per the project's rules.
         if st.button("🔄 Refresh live data now", type="primary",
                      use_container_width=True):
             from ahmon import refresh as _refresh
-            fresh_min = None
-            if not IS_ADMIN:
-                last = conn.read_df("SELECT MAX(updated_at) AS ts "
-                                    "FROM daily_obs").iloc[0]["ts"]
-                if last:
-                    age = (pd.Timestamp(datetime.now(config.TZ))
-                           - pd.Timestamp(last)).total_seconds() / 60.0
-                    if age < 5:
-                        fresh_min = age
-            if fresh_min is not None:
-                st.info(f"Data is already fresh — last updated "
-                        f"{fresh_min:.0f} min ago (auto-refresh runs "
-                        "every 15 min during market hours).")
-            else:
-                with st.spinner("Fetching live quotes (akshare + Yahoo)…"):
-                    try:
-                        s = _refresh.refresh_live(conn)
-                    except Exception as e:  # noqa: BLE001 — shown, not hidden
-                        st.error(f"Refresh failed — see Health tab. {e}")
-                    else:
-                        st.session_state["data_version"] += 1
-                        st.success(
-                            f"{s['upserted']} companies refreshed for "
-                            f"{s['obs_date']} · FX {s['fx']:.4f} · "
-                            f"{s['calc_vs_source_flags']} calc-vs-source "
-                            "flags")
-                        st.rerun()
+            with st.spinner("Fetching live quotes (akshare + Yahoo)…"):
+                try:
+                    s = _refresh.refresh_live(conn)
+                except Exception as e:      # noqa: BLE001 — shown, not hidden
+                    st.error(f"Refresh failed — see Health tab. {e}")
+                else:
+                    st.session_state["data_version"] += 1
+                    st.success(f"{s['upserted']} companies refreshed for "
+                               f"{s['obs_date']} · FX {s['fx']:.4f} · "
+                               f"{s['calc_vs_source_flags']} calc-vs-source "
+                               "flags")
+                    st.rerun()
     if IS_ADMIN:
         st.divider()
         st.subheader("Manual CSV import")
