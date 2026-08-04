@@ -602,7 +602,7 @@ with tabs[1]:
                 _accent(m[4], "Required price", f"HK${_req:,.2f}",
                         "DPS ÷ target yield: the price at which this "
                         "DPS pays exactly the target.")
-                m[5].metric("Position vs required",
+                m[5].metric("Current price vs Required price",
                             _pos_text.replace(" target price", ""),
                             help="'Below' = today's price is under the "
                                  "required price, so the yield at "
