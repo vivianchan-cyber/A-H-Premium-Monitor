@@ -15,6 +15,19 @@ variable (never in source code): a JSON list of objects
 - No credential, hash or e-mail ever appears in code, logs or the page
   source; login state lives in the server-side Streamlit session.
 
+Remember me: the login form offers a "keep me signed in" option that
+stores an HMAC-SHA256-signed token (e-mail + expiry, no password
+material) in a browser cookie for REMEMBER_DAYS days. The signature is
+keyed on the signing secret *and* the user's current password hash, so
+changing a password or removing the user invalidates their remembered
+sessions immediately. The signing secret is AHMON_COOKIE_SECRET when
+set; otherwise it is derived from the AHMON_USERS value itself, which
+also works but logs every remembered device out whenever the user list
+changes at all. The cookie is set by a tiny script (Streamlit cannot
+set cookies server-side), so it cannot be HttpOnly — the token it
+carries grants login only while its user still exists unchanged, and
+it never contains a password or hash.
+
 Local development: when AHMON_USERS is unset AND no DATABASE_URL is
 configured, the app runs open as an implicit local admin (with a visible
 notice). When DATABASE_URL is set, AHMON_USERS is mandatory — a hosted
@@ -23,6 +36,7 @@ instance can never silently run unauthenticated.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -33,6 +47,9 @@ import time
 
 ROLES = ("admin", "viewer")
 _ITERATIONS = 600_000
+
+COOKIE_NAME = "ahmon_remember"
+REMEMBER_DAYS = 30
 
 
 # ------------------------------------------------------------------ hashing
@@ -86,7 +103,86 @@ def authenticate(email: str, password: str) -> dict | None:
     return None
 
 
+# -------------------------------------------------------- remember-me token
+
+def _cookie_secret() -> str | None:
+    """Signing key for remember-me tokens: AHMON_COOKIE_SECRET when set,
+    else derived from the AHMON_USERS value (any user-list edit then
+    invalidates all remembered sessions). None → feature unavailable."""
+    explicit = os.environ.get("AHMON_COOKIE_SECRET", "").strip()
+    if explicit:
+        return explicit
+    raw = os.environ.get("AHMON_USERS", "").strip()
+    if raw:
+        return hashlib.sha256(b"ahmon-remember|" + raw.encode()).hexdigest()
+    return None
+
+
+def _signature(email: str, expires: int, password_hash: str,
+               secret: str) -> str:
+    key = (secret + "|" + password_hash).encode()
+    return hmac.new(key, f"{email}|{expires}".encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def make_remember_token(email: str, days: int = REMEMBER_DAYS,
+                        _now: float | None = None) -> str | None:
+    """Signed token 'v1.<email-b64url>.<expiry>.<sig>' for a configured
+    user, or None when the user or the signing secret is unavailable."""
+    email = (email or "").strip().lower()
+    record = load_users().get(email)
+    secret = _cookie_secret()
+    if not record or not secret:
+        return None
+    now = _now if _now is not None else time.time()
+    expires = int(now + days * 86400)
+    email_b64 = base64.urlsafe_b64encode(
+        email.encode()).decode().rstrip("=")
+    sig = _signature(email, expires, record["password_hash"], secret)
+    return f"v1.{email_b64}.{expires}.{sig}"
+
+
+def verify_remember_token(token: str | None,
+                          _now: float | None = None) -> dict | None:
+    """{"email", "role"} when the token is well-formed, unexpired and its
+    user still exists with an unchanged password; None otherwise."""
+    try:
+        version, email_b64, expires_s, sig = token.split(".")
+        if version != "v1":
+            return None
+        email = base64.urlsafe_b64decode(
+            email_b64 + "=" * (-len(email_b64) % 4)).decode()
+        expires = int(expires_s)
+    except (AttributeError, ValueError):
+        return None
+    now = _now if _now is not None else time.time()
+    if now > expires:
+        return None
+    record = load_users().get(email)
+    secret = _cookie_secret()
+    if not record or not secret:
+        return None
+    expected = _signature(email, expires, record["password_hash"], secret)
+    if not hmac.compare_digest(expected, sig):
+        return None
+    return {"email": email, "role": record["role"]}
+
+
 # --------------------------------------------------------------- streamlit
+
+def _write_cookie(value: str, max_age: int):
+    """Set/clear the remember-me cookie from the browser: Streamlit has
+    no server-side Set-Cookie, so a zero-height component script writes
+    it on the app's own origin. Token characters are [A-Za-z0-9._-],
+    safe to interpolate. Secure keeps it HTTPS-only (browsers still
+    allow it on http://localhost for development)."""
+    import streamlit.components.v1 as components
+    components.html(
+        f"<script>window.parent.document.cookie = "
+        f'"{COOKIE_NAME}={value}; Max-Age={max_age}; Path=/; '
+        f'SameSite=Lax; Secure";</script>',
+        height=0, width=0)
+
 
 def require_login():
     """Gate the Streamlit app. Returns the logged-in user dict, or stops
@@ -107,13 +203,26 @@ def require_login():
 
     user = st.session_state.get("auth_user")
     if user:
+        token = st.session_state.pop("_remember_pending", None)
+        if token:
+            _write_cookie(token, REMEMBER_DAYS * 86400)
         return user
+
+    if st.session_state.pop("_forget_cookie", False):
+        _write_cookie("", 0)                 # logged out: drop the cookie
+    else:
+        user = verify_remember_token(st.context.cookies.get(COOKIE_NAME))
+        if user:
+            st.session_state["auth_user"] = user
+            return user
 
     st.title("A–H Premium Monitor")
     st.markdown("Please sign in. Access is limited to approved users.")
     with st.form("login"):
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
+        remember = st.checkbox(
+            f"Keep me signed in on this device for {REMEMBER_DAYS} days")
         submitted = st.form_submit_button("Sign in", type="primary")
     if submitted:
         user = authenticate(email, password)
@@ -122,6 +231,9 @@ def require_login():
             st.error("Unknown email or wrong password.")
         else:
             st.session_state["auth_user"] = user
+            if remember:
+                st.session_state["_remember_pending"] = \
+                    make_remember_token(user["email"])
             st.rerun()
     st.stop()
 
@@ -129,6 +241,9 @@ def require_login():
 def logout():
     import streamlit as st
     st.session_state.pop("auth_user", None)
+    # the cookie outlives the session — without this flag the very next
+    # rerun would silently sign the user straight back in from it
+    st.session_state["_forget_cookie"] = True
 
 
 # --------------------------------------------------------------------- CLI

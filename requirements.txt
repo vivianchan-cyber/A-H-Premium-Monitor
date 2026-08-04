@@ -1,5 +1,5 @@
 # Phase 1 (sample data, dashboard, calc engine, tests)
-streamlit>=1.36
+streamlit>=1.37         # st.context.cookies (remember-me sign-in)
 pandas>=2.0
 numpy>=1.26
 plotly>=5.20

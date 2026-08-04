@@ -69,6 +69,17 @@ experience is assumed. Everything you type is shown in `code blocks`.
    Roles: `admin` can refresh data, run backfills, manage the Focus
    list and use system actions; `viewer` is read-only. Only e-mails in
    this list can log in at all.
+
+   **Optional — stable "remember me" sessions:** the login form offers
+   "keep me signed in on this device for 30 days" (a signed cookie; it
+   never contains a password, and changing a user's password logs their
+   remembered devices out). By default the cookie signature is derived
+   from `AHMON_USERS`, so *any* edit to the user list — even adding a
+   viewer — signs every remembered device out. To avoid that, add a
+   second variable `AHMON_COOKIE_SECRET` set to a long random string
+   (e.g. the output of `python -c "import secrets; print(secrets.token_hex(32))"`).
+   Give staging and production *different* secrets so their cookies
+   stay separate.
 3. **Redeploy** (Deployments → ⋮ → Redeploy). The app now starts and
    shows the login page.
 
