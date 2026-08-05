@@ -184,13 +184,16 @@ def test_exclusion_explicit_and_full_universe_paragraph():
         t, pd.DataFrame(columns=["Company", "Driver"]))
     assert "(excluding focus holdings)" in daily
     assert "**Full A–H Universe:**" in daily
-    assert "across all 2 companies" in daily
+    assert "across the 2 companies measured today" in daily
     # discount levels: 100% prem → 50.0, 50% prem → 33.3; median 41.7
     assert "stands at 41.7%" in daily
     wk = commentary.period_commentary(t, "1w")
     assert "(excluding focus holdings)" in wk
     assert "**Full A–H Universe (week):**" in wk
+    # count only claims names with history spanning the window
+    assert "across the 2 companies with a full week of history" in wk
     assert "over the past week and stands at 41.7%" in wk
+    assert "across all" not in daily and "across all" not in wk
 
 
 def test_period_commentary_gains_driver_sentence():

@@ -206,11 +206,11 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
             both["Premium calc (%)"]).median()
         parts.append(
             f"**Full A–H Universe:** Taking focus holdings and the rest "
-            f"together, the median H-share discount across all "
-            f"{len(both)} companies {_direction(med)}"
+            f"together, the median H-share discount across the "
+            f"{len(both)} companies measured today {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
-            + f" today and stands at {level:.1f}%.")
+            + f" and stands at {level:.1f}%.")
 
     warn = table[table["Quality"].isin(["stale", "failed"])]
     if not warn.empty:
@@ -283,10 +283,14 @@ def period_commentary(table: pd.DataFrame, period: str,
         med = both["dd"].median()
         level = metrics.premium_to_discount(
             both["Premium calc (%)"]).median()
+        # "all N companies" misleads on the longer windows: only names
+        # with an observation at the far end of the window can have a
+        # change measured, so say exactly that
         parts.append(
             f"**Full A–H Universe ({label}):** Taking focus holdings and "
-            f"the rest together, the median H-share discount across all "
-            f"{len(both)} companies {_direction(med)}"
+            f"the rest together, the median H-share discount across the "
+            f"{len(both)} companies with a full {label} of history "
+            f"{_direction(med)}"
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
             + f" over the past {label} and stands at {level:.1f}%.")
