@@ -577,7 +577,9 @@ with tabs[1]:
                 _req = _divwatch.required_price(float(_dps), _target)
                 _pos_text, _ = _divwatch.position_vs_required(
                     float(_price), _req)
-                m = st.columns(6)
+                # two rows of three: six columns squeeze the figures
+                # into truncated 'HK$0…' fragments on ordinary screens
+                m = st.columns(3) + st.columns(3)
                 m[0].metric("DPS used", f"HK${float(_dps):,.3f}",
                             help=f"Basis: {_row['DPS basis']}.")
                 m[1].metric("Current price", f"HK${float(_price):,.2f}",
