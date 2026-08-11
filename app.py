@@ -1307,3 +1307,10 @@ with tabs[8]:
                    "15:00–16:00 HK; Portfolio/Watchlist 15 min; Other "
                    "30 min; EOD snapshot after HK close. Sample data is "
                    "never relabelled as live.")
+
+# ------------------------------------------------- public-site footer only
+if IS_PUBLIC:
+    st.divider()
+    st.caption("Built by Vivian Chan | "
+               "[GitHub](https://github.com/vivianchan-cyber/"
+               "A-H-Premium-Monitor)")
