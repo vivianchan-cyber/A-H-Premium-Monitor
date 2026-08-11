@@ -140,14 +140,18 @@ def _direction(med: float) -> str:
             "widened" if med > 0.05 else "was broadly unchanged")
 
 
-def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
+def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame,
+                     public: bool = False) -> str:
+    """`public=True` renders the whole-universe note only — the Focus /
+    rest-of-universe split describes the owner's holdings and never
+    appears on the public site."""
     focus = table[table["Classification"] == config.FOCUS].dropna(
         subset=["Δ1d (pp)"]).copy()
     rest = table[table["Classification"] != config.FOCUS].dropna(
         subset=["Δ1d (pp)"]).copy()
     parts = []
 
-    if not focus.empty:
+    if not focus.empty and not public:
         focus["dd"] = _discount_delta(focus, "Δ1d (pp)")
         med = focus["dd"].median()
         top = focus.sort_values("dd").head(3)      # deepest narrowing
@@ -180,7 +184,7 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
             f"The discounts that narrowed most were "
             f"{_fmt_names(list(top['Company']))}{cause}.")
 
-    if not rest.empty:
+    if not rest.empty and not public:
         rest["dd"] = _discount_delta(rest, "Δ1d (pp)")
         med = rest["dd"].median()
         big = rest[rest["dd"].abs() > FLAG_PP["1d"]]
@@ -204,13 +208,17 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
         med = both["dd"].median()
         level = metrics.premium_to_discount(
             both["Premium calc (%)"]).median()
+        lead = ("**Full A–H Universe:** The" if public else
+                "**Full A–H Universe:** Taking focus holdings and the "
+                "rest together, the")
         parts.append(
-            f"**Full A–H Universe:** Taking focus holdings and the rest "
-            f"together, the median H-share discount across the "
+            f"{lead} median H-share discount across the "
             f"{len(both)} companies measured today {_direction(med)}"
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
-            + f" and stands at {level:.1f}%.")
+            + f" and stands at {level:.1f}%."
+            + (_driver_sentence(attribution, both["Company"])
+               if public else ""))
 
     warn = table[table["Quality"].isin(["stale", "failed"])]
     if not warn.empty:
@@ -224,12 +232,14 @@ def daily_commentary(table: pd.DataFrame, attribution: pd.DataFrame) -> str:
 
 
 def period_commentary(table: pd.DataFrame, period: str,
-                      attribution: pd.DataFrame | None = None) -> str:
+                      attribution: pd.DataFrame | None = None,
+                      public: bool = False) -> str:
     """Weekly ('1w') or monthly ('1m') commentary from stored changes.
     Same Focus-first structure as the daily note, over a longer window.
     `attribution` should be the decomposition computed over the SAME
     window (metrics.attribution_over), so each paragraph can state what
-    caused its moves."""
+    caused its moves. `public=True` renders the whole-universe paragraph
+    only (no Focus / rest-of-universe split)."""
     col = {"1w": "Δ1w (pp)", "1m": "Δ1m (pp)", "1y": "Δ1y (pp)"}[period]
     label = {"1w": "week", "1m": "month", "1y": "year"}[period]
     focus = table[table["Classification"] == config.FOCUS].dropna(
@@ -238,7 +248,7 @@ def period_commentary(table: pd.DataFrame, period: str,
         subset=[col]).copy()
     parts = []
 
-    if not focus.empty:
+    if not focus.empty and not public:
         focus["dd"] = _discount_delta(focus, col)
         med = focus["dd"].median()
         nar = focus.sort_values("dd").head(3)
@@ -257,7 +267,7 @@ def period_commentary(table: pd.DataFrame, period: str,
             + _driver_sentence(attribution, focus["Company"],
                                style=label))
 
-    if not rest.empty:
+    if not rest.empty and not public:
         rest["dd"] = _discount_delta(rest, col)
         med = rest["dd"].median()
         thr = FLAG_PP[period]
@@ -286,14 +296,18 @@ def period_commentary(table: pd.DataFrame, period: str,
         # "all N companies" misleads on the longer windows: only names
         # with an observation at the far end of the window can have a
         # change measured, so say exactly that
+        lead = (f"**Full A–H Universe ({label}):** The" if public else
+                f"**Full A–H Universe ({label}):** Taking focus holdings "
+                f"and the rest together, the")
         parts.append(
-            f"**Full A–H Universe ({label}):** Taking focus holdings and "
-            f"the rest together, the median H-share discount across the "
+            f"{lead} median H-share discount across the "
             f"{len(both)} companies with a full {label} of history "
             f"{_direction(med)}"
             + (f" by {abs(med):.1f} percentage points"
                if abs(med) > 0.05 else "")
-            + f" over the past {label} and stands at {level:.1f}%.")
+            + f" over the past {label} and stands at {level:.1f}%."
+            + (_driver_sentence(attribution, both["Company"], style=label,
+                                min_move_pp=2.0) if public else ""))
 
     hi = table.dropna(subset=["52w percentile"])
     ext = hi[(hi["52w percentile"] >= 98) | (hi["52w percentile"] <= 2)]

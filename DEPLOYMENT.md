@@ -83,6 +83,29 @@ experience is assumed. Everything you type is shown in `code blocks`.
 3. **Redeploy** (Deployments → ⋮ → Redeploy). The app now starts and
    shows the login page.
 
+## 4b. Optional: public read-only site
+
+A second web service can serve an **open, no-login** version of the
+dashboard from the same code and database. It hides everything
+portfolio-related: no Focus/Other grouping (one full-universe table),
+no Focus paragraphs in commentary, no classification columns, audit
+logs or stored-commentary archive, and the Buy-level watch becomes a
+universe-wide yield monitor (trailing-12m DPS, one uniform 5% target)
+instead of the private watchlist.
+
+1. In the project: **+ New** → **GitHub Repo** → same repository.
+2. New service → **Settings** → **Config-as-code** → set the path to
+   `railway.public.toml` (otherwise it boots as the private web app).
+3. **Variables**: add `AHMON_PUBLIC` = `1` and `DATABASE_URL` =
+   `${{Postgres.DATABASE_URL}}`. Do **not** add `AHMON_USERS` here.
+4. **Settings** → **Networking** → **Generate Domain** — that URL is
+   the public site.
+
+`AHMON_PUBLIC=1` disables authentication for that service, so **never
+set it on the private service**. The universe dividend record that
+feeds the public yield watch is refreshed automatically by the cron
+service (roughly weekly; ~200 Yahoo calls, self-throttled).
+
 ## 5. Load your data into PostgreSQL
 
 From your computer, copy your local database into the hosted one:

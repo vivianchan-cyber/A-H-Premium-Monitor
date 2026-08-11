@@ -53,6 +53,17 @@ def main(argv=None):
             print(f"refreshed {s.get('upserted')} companies for "
                   f"{s.get('obs_date')} · {s.get('alerts_fired')} alerts · "
                   f"{s.get('buy_watch')} on buy watch")
+        try:
+            # universe dividend record (feeds the public yield watch):
+            # internally skipped while the last full fetch is <7 days
+            # old, so this costs ~200 Yahoo calls about once a week
+            from . import divwatch
+            d = divwatch.refresh_universe_dps(conn, max_age_days=7)
+            if "skipped" not in d:
+                print(f"universe dividends: {d['stored']} stored, "
+                      f"{len(d['failed'])} failures")
+        except Exception as e:   # noqa: BLE001 — never fail the refresh
+            print(f"universe dividend fetch failed: {e}")
         return 0
     finally:
         conn.close()

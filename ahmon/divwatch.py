@@ -212,6 +212,101 @@ def unusual_payout(events: pd.DataFrame, asof: str) -> bool:
     return prev > 0 and cur > UNUSUAL_PAYOUT_RATIO * prev
 
 
+# ------------------------------------------- public universe yield watch
+
+# The public site's watch covers every H share with one uniform target —
+# the stable/cyclical/not-yield-based judgements are the owner's private
+# per-holding calls and are neither published nor guessed for ~200 names.
+UNIVERSE_TARGET = 5.0
+UNIVERSE_DPS_SOURCE = "Dividend history (Yahoo events, universe)"
+
+
+def refresh_universe_dps(conn, yahoo_source=None,
+                         max_age_days: int | None = 7) -> dict:
+    """Fetch declared dividends for EVERY company's H share (idempotent).
+    With `max_age_days` set, does nothing while the last successful full
+    fetch is younger than that — lets the 15-minute cron call this every
+    cycle and pay the ~200 Yahoo requests roughly once a week."""
+    if max_age_days is not None:
+        h = db.source_health_df(conn)
+        h = h[h["source"] == UNIVERSE_DPS_SOURCE]
+        if not h.empty and h.iloc[0]["status"] == "ok" \
+                and h.iloc[0]["last_success"]:
+            age = pd.Timestamp(db.now_iso()) \
+                - pd.Timestamp(h.iloc[0]["last_success"])
+            if age < pd.Timedelta(days=max_age_days):
+                return {"skipped": "fresh", "stored": 0, "failed": []}
+    if yahoo_source is None:
+        from .sources.yahoo import YahooSource
+        yahoo_source = YahooSource()
+    comps = db.companies_df(conn)
+    stored, no_divs, failed = 0, 0, []
+    for t in comps["h_ticker"]:
+        try:
+            divs = yahoo_source.fetch_dividends(t)
+        except Exception as e:                    # noqa: BLE001 per-ticker
+            failed.append(f"{t}: {type(e).__name__}: {e}")
+            continue
+        if divs.empty:
+            no_divs += 1
+            continue
+        db.insert_dps_events(conn, [
+            {"ticker": t, "ex_date": r["ex_date"],
+             "amount_hkd": float(r["amount_hkd"]), "special": 0,
+             "source": "yahoo:events"} for _, r in divs.iterrows()])
+        stored += len(divs)
+    db.set_source_health(
+        conn, UNIVERSE_DPS_SOURCE,
+        "ok" if len(failed) < len(comps) / 2 else "degraded",
+        f"{stored} declared dividends stored across {len(comps)} "
+        f"companies; {no_divs} pay none; failures: "
+        f"{failed[:5] or 'none'}{' …' if len(failed) > 5 else ''}")
+    return {"stored": stored, "no_dividends": no_divs, "failed": failed}
+
+
+def universe_yield_table(conn, monitor_table: pd.DataFrame,
+                         target: float = UNIVERSE_TARGET) -> pd.DataFrame:
+    """Yield watch across the whole A–H universe for the public site:
+    trailing-12m DPS only (no private manual overrides), one uniform
+    target yield, same status semantics as the private watch. Names
+    without dividend history read '—' rather than a fabricated signal."""
+    if monitor_table.empty:
+        return pd.DataFrame()
+    all_events = db.dps_events_df(conn)
+    today = db.now_iso()[:10]
+    out = []
+    for _, r in monitor_table.iterrows():
+        t = r["H Ticker"]
+        price = r["H Price (HKD)"]
+        price = float(price) if pd.notna(price) else None
+        ev = all_events[all_events["ticker"] == t] \
+            if not all_events.empty else all_events
+        dps = trailing_dps(ev, today)
+        special = unusual_payout(ev, today) if dps is not None else False
+        status, dist, topup, cur_yield = "—", None, None, None
+        if dps is not None and price is not None:
+            topup = topup_price(dps, target)
+            cur_yield = dps / price * 100.0
+            status, dist = classify_topup(price, topup)
+        out.append({
+            "Company": r["Company"], "H Ticker": t,
+            "Sector": r.get("Sector"),
+            "Price (HKD)": price,
+            "Trailing 12m DPS (HKD)": dps,
+            "Current yield (%)": cur_yield,
+            f"Price for {target:.0f}% yield (HKD)": topup,
+            "Position": position_text(dist),
+            "Status": status,
+            "DPS note": "review special" if special else "—",
+            "_dist": dist,
+        })
+    df = pd.DataFrame(out)
+    df["_s"] = df["Status"].map(STATUS_ORDER).fillna(9)
+    df = df.sort_values(["_s", "_dist"], na_position="last") \
+        .drop(columns=["_s", "_dist"])
+    return df.reset_index(drop=True)
+
+
 def build_topup_table(conn) -> pd.DataFrame:
     """One row per holding. DPS precedence: manual override, else
     trailing 12m declared dividends, else DATA REVIEW. Sorted

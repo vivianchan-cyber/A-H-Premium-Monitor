@@ -1,0 +1,16 @@
+# Railway configuration for the PUBLIC read-only dashboard service.
+# Same app, same database, different mode: the service's Variables must
+# set AHMON_PUBLIC=1 (that flag disables login and hides everything
+# portfolio-related) and reference the shared Postgres DATABASE_URL.
+# Do NOT set AHMON_USERS on this service — it is deliberately open.
+#
+# Point the public service's Settings → Config-as-code at THIS file;
+# otherwise it reads railway.toml (private web) instead. The service
+# never writes market data — the cron service owns the refresh.
+
+[deploy]
+startCommand = "streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
+healthcheckPath = "/_stcore/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

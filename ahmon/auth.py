@@ -192,6 +192,12 @@ def require_login():
 
     from . import config
 
+    if config.PUBLIC_MODE:
+        # the dedicated public service: open, strictly viewer-level —
+        # every admin surface keys off role, and app.py additionally
+        # hides all portfolio-related views when "public" is set
+        return {"email": "public", "role": "viewer", "public": True}
+
     users = load_users()
     if not users:
         if config.DATABASE_URL:

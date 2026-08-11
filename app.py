@@ -86,6 +86,10 @@ st.set_page_config(page_title="A–H Premium Monitor", page_icon="📈",
                    layout="wide")
 user = auth.require_login()
 IS_ADMIN = user["role"] == "admin"
+# Public read-only service (AHMON_PUBLIC=1): everything portfolio-
+# related — the Focus/Other split, the owner's watchlist, audit trails,
+# stored commentary naming holdings — is hidden, not just locked.
+IS_PUBLIC = bool(user.get("public"))
 conn = get_conn()
 st.session_state.setdefault("data_version", 0)
 table, att = load(st.session_state["data_version"])
@@ -93,7 +97,9 @@ hsahp = db.hsahp_series(conn)
 
 
 def sidebar_user_badge():
-    if user.get("local_dev"):
+    if IS_PUBLIC:
+        st.caption("🌐 Public read-only view")
+    elif user.get("local_dev"):
         st.caption("🔓 local development mode — no login configured")
     else:
         c1, c2 = st.columns([3, 1])
@@ -511,7 +517,89 @@ def show_table(t: pd.DataFrame, key: str = "tbl"):
 
 
 # ------------------------------------------------------ 2 Buy-level watch
+def public_buy_level_watch():
+    """Universe-wide yield watch for the public site: every H share,
+    trailing-12m DPS, one uniform target — no portfolio watchlist."""
+    from ahmon import divwatch as _divwatch
+    st.markdown("#### 💡 Buy-level watch — yield-based monitor")
+    _tgt = _divwatch.UNIVERSE_TARGET
+    st.caption(
+        f"Covers **every H share in the A–H universe**. Each name's "
+        f"annual DPS is its **trailing 12-month declared dividends** "
+        f"(Yahoo Finance record; special payouts are not labelled — "
+        f"names whose trailing total looks unusual are marked *review "
+        f"special*). Reference price = **DPS ÷ {_tgt:.0f}% target "
+        f"yield**, one uniform benchmark for every name — adjust it "
+        f"per stock with the calculator. Status: **WAIT** = price more "
+        f"than 5% above that reference price · **NEAR RANGE** = within "
+        f"5% above it · **IN RANGE — REVIEW** = at or below it (the "
+        f"yield test passes — always check dividend sustainability "
+        f"before acting) · **—** = no dividends in the last 12 months. "
+        f"Nothing here is investment advice.")
+    dw = _divwatch.universe_yield_table(conn, table)
+    if dw.empty:
+        st.info("No data yet.")
+        return
+    _price_col = f"Price for {_tgt:.0f}% yield (HKD)"
+
+    _yb = dw[dw["Trailing 12m DPS (HKD)"].notna()]
+    if not _yb.empty:
+        with st.container(border=True):
+            st.markdown("##### 🎯 Target-yield calculator — what-if")
+            _pick = st.selectbox(
+                "Stock", list(_yb["Company"] + "  (" + _yb["H Ticker"]
+                              + ")"),
+                key="pub_calc_pick",
+                help="Names with at least one declared dividend in the "
+                     "last 12 months.")
+            _tick = _pick.rsplit("(", 1)[1].rstrip(")")
+            _row = _yb.set_index("H Ticker").loc[_tick]
+            _ks = "pub_calc_target"
+            st.session_state.setdefault(_ks, _tgt)
+            _target = st.slider("Target yield (%)", min_value=1.0,
+                                max_value=12.0, step=0.1, key=_ks)
+            _dps, _price = float(_row["Trailing 12m DPS (HKD)"]), \
+                _row["Price (HKD)"]
+            if pd.isna(_price):
+                st.warning("No current price stored for this name.")
+            else:
+                _req = _divwatch.required_price(_dps, float(_target))
+                _pos, _ = _divwatch.position_vs_required(float(_price),
+                                                         _req)
+                m = st.columns(3) + st.columns(3)
+                m[0].metric("Trailing 12m DPS", f"HK${_dps:,.3f}")
+                m[1].metric("Current price", f"HK${float(_price):,.2f}")
+                m[2].metric("Current yield",
+                            f"{_dps / float(_price) * 100:.2f}%")
+                m[3].metric("Target yield", f"{float(_target):.1f}%")
+                m[4].metric("Required price", f"HK${_req:,.2f}")
+                m[5].metric("Current price vs Required price",
+                            _pos.replace(" target price", ""))
+
+    _status_css = {
+        _divwatch.ST_REVIEW: "background-color: #0083002e",
+        _divwatch.ST_NEAR: "background-color: #eda1002e"}
+    disp = dw.copy()
+    for c in ["Price (HKD)", "Trailing 12m DPS (HKD)", _price_col]:
+        disp[c] = disp[c].map(
+            lambda v: "—" if pd.isna(v) else f"{v:,.2f}")
+    disp["Current yield (%)"] = disp["Current yield (%)"].map(
+        lambda v: "—" if pd.isna(v) else f"{v:.2f}")
+    sty = disp.style.map(
+        lambda v: _status_css.get(v, ""), subset=["Status"]).map(
+        lambda v: "background-color: #eda1002e"
+        if v == "review special" else "", subset=["DPS note"])
+    st.dataframe(sty, use_container_width=True, height=560,
+                 hide_index=True,
+                 column_config={"Current yield (%)": st.column_config
+                                .Column(help="Trailing 12m DPS ÷ "
+                                             "current price.")})
+
+
 with tabs[1]:
+  if IS_PUBLIC:
+    public_buy_level_watch()
+  else:
     st.markdown("#### 💡 Buy-level watch — yield-based top-up monitor")
     st.caption(
         "Covers the 20 Focus holdings. Target yields: **5.0%** for "
@@ -742,10 +830,18 @@ with tabs[0]:
         "🔎 Filter — type letters to narrow the tables below",
         placeholder="e.g. bank · 601988 · 中国 · Financials",
         key="monitor_filter")
+    _filter_cols = [c for c in metrics.TEXT_FILTER_COLUMNS
+                    if not (IS_PUBLIC and c == "Classification")]
     filter_col = fc2.selectbox(
-        "in column", ["All text columns"] + metrics.TEXT_FILTER_COLUMNS,
+        "in column", ["All text columns"] + _filter_cols,
         key="monitor_filter_col")
-    ftable = metrics.filter_table(table, filter_text, filter_col)
+    _src = table
+    if IS_PUBLIC:
+        # filtering must not match the portfolio labels either — a
+        # visitor typing "Focus" would otherwise isolate the holdings
+        _src = table.copy()
+        _src["Classification"] = ""
+    ftable = metrics.filter_table(_src, filter_text, filter_col)
     if filter_text and len(ftable) < len(table):
         st.caption(f"Showing {len(ftable)} of {len(table)} companies "
                    f"matching “{filter_text}”. (The magnifier icon on any "
@@ -769,69 +865,79 @@ with tabs[0]:
                 "H Ticker" if ticker_rank is not None else "Company"]
         return t.sort_values(cols, key=key)
 
-    # Focus rows keep the order of config/focus_list.csv within their
-    # sector, so the owner controls row order by editing the list.
-    focus_rank = {t: i for i, t in enumerate(
-        pd.read_csv(config.CONFIG_DIR / "focus_list.csv")["h_ticker"])}
+    def universe_summary(show_split: bool):
+        st.markdown("##### Full A-H Universe (summary)")
+        if show_split:
+            n_focus = int((table["Classification"] == config.FOCUS).sum())
+            st.caption(f"All {len(table)} A–H companies "
+                       f"= {n_focus} Focus A-H Holdings "
+                       f"+ {len(table) - n_focus} Other A-H Stocks.")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(
+            "Companies", len(table),
+            help="Every dual-listed company tracked — each has "
+                 "both a Hong Kong H share and a mainland A "
+                 "share. The count grows automatically when a "
+                 "new A–H pair starts trading.")
+        med_disc = table["H discount to A (%)"].median()
+        med_prem = table["Premium calc (%)"].median()
+        c2.metric(
+            "Median H discount to A",
+            "—" if pd.isna(med_disc) else f"{med_disc:.1f}%",
+            help="The middle company's H-share discount to its A "
+                 "twin: half the universe trades at a bigger "
+                 "discount, half at a smaller one. Equivalent to "
+                 f"a median A-share premium of {med_prem:.1f}% "
+                 "(the industry's usual convention).")
+        med_d1 = table["Δ1d (pp)"].median()
+        c3.metric(
+            "Median Δ1d",
+            "—" if pd.isna(med_d1) else f"{med_d1:+.2f} pp",
+            help="The middle company's one-day change in the "
+                 "A-share premium, in percentage points. "
+                 "Positive = price gaps widened since yesterday "
+                 "(H shares got relatively cheaper); negative = "
+                 "gaps narrowed. Changes are measured on the "
+                 "premium because that is the industry "
+                 "convention. Needs at least two days of stored "
+                 "history.")
+        c4.metric(
+            ">5pp movers today",
+            int((table["Δ1d (pp)"].abs() > 5).sum()),
+            help="How many companies' premium moved more than 5 "
+                 "percentage points since yesterday, in either "
+                 "direction — a quick gauge of how turbulent "
+                 "the A–H gap is today.")
 
-    groups = {
-        "Focus A-H Holdings":
-            by_sector(ftable[ftable["Classification"] == config.FOCUS],
-                      focus_rank),
-        "Other A-H Stocks":
-            by_sector(ftable[ftable["Classification"] != config.FOCUS]),
-        "Full A-H Universe": ftable,
-    }
-    sub = st.tabs(list(groups))
-    for stab, (name, t) in zip(sub, groups.items()):
-        with stab:
-            show_table(t.reset_index(drop=True),
-                       key=name.replace(" ", "_").lower())
-            if name == "Focus A-H Holdings" and not t.empty:
-                n_focus = int(
-                    (table["Classification"] == config.FOCUS).sum())
-                st.markdown("##### Full A-H Universe (summary)")
-                st.caption(f"All {len(table)} A–H companies "
-                           f"= {n_focus} Focus A-H Holdings "
-                           f"+ {len(table) - n_focus} Other A-H Stocks.")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric(
-                    "Companies", len(table),
-                    help="Every dual-listed company tracked — each has "
-                         "both a Hong Kong H share and a mainland A "
-                         "share. The count grows automatically when a "
-                         "new A–H pair starts trading.")
-                med_disc = table["H discount to A (%)"].median()
-                med_prem = table["Premium calc (%)"].median()
-                c2.metric(
-                    "Median H discount to A",
-                    "—" if pd.isna(med_disc) else f"{med_disc:.1f}%",
-                    help="The middle company's H-share discount to its A "
-                         "twin: half the universe trades at a bigger "
-                         "discount, half at a smaller one. Equivalent to "
-                         f"a median A-share premium of {med_prem:.1f}% "
-                         "(the industry's usual convention).")
-                med_d1 = table["Δ1d (pp)"].median()
-                c3.metric(
-                    "Median Δ1d",
-                    "—" if pd.isna(med_d1) else f"{med_d1:+.2f} pp",
-                    help="The middle company's one-day change in the "
-                         "A-share premium, in percentage points. "
-                         "Positive = price gaps widened since yesterday "
-                         "(H shares got relatively cheaper); negative = "
-                         "gaps narrowed. Changes are measured on the "
-                         "premium because that is the industry "
-                         "convention. Needs at least two days of stored "
-                         "history.")
-                c4.metric(
-                    ">5pp movers today",
-                    int((table["Δ1d (pp)"].abs() > 5).sum()),
-                    help="How many companies' premium moved more than 5 "
-                         "percentage points since yesterday, in either "
-                         "direction — a quick gauge of how turbulent "
-                         "the A–H gap is today.")
+    if IS_PUBLIC:
+        # one table, the whole universe, sector-grouped — no
+        # portfolio grouping exists on the public site
+        show_table(by_sector(ftable).reset_index(drop=True),
+                   key="universe_public")
+        universe_summary(show_split=False)
+    else:
+        # Focus rows keep the order of config/focus_list.csv within
+        # their sector, so the owner controls row order by editing it.
+        focus_rank = {t: i for i, t in enumerate(
+            pd.read_csv(config.CONFIG_DIR / "focus_list.csv")["h_ticker"])}
+        groups = {
+            "Focus A-H Holdings":
+                by_sector(ftable[ftable["Classification"] == config.FOCUS],
+                          focus_rank),
+            "Other A-H Stocks":
+                by_sector(ftable[ftable["Classification"] != config.FOCUS]),
+            "Full A-H Universe": ftable,
+        }
+        sub = st.tabs(list(groups))
+        for stab, (name, t) in zip(sub, groups.items()):
+            with stab:
+                show_table(t.reset_index(drop=True),
+                           key=name.replace(" ", "_").lower())
+                if name == "Focus A-H Holdings" and not t.empty:
+                    universe_summary(show_split=True)
 
-    st.divider()
+    if not IS_PUBLIC:
+        st.divider()
     if IS_ADMIN:
         st.markdown("##### Focus list")
         st.caption("The Focus list is stored in the database and "
@@ -899,10 +1005,11 @@ with tabs[0]:
                                   source=f"dashboard:{user['email']}")
             st.session_state["data_version"] += 1
             st.rerun()
-    else:
+    elif not IS_PUBLIC:
         st.caption("Classification changes require an admin account.")
-    with st.expander("Classification audit log"):
-        st.dataframe(db.audit_df(conn), use_container_width=True)
+    if not IS_PUBLIC:
+        with st.expander("Classification audit log"):
+            st.dataframe(db.audit_df(conn), use_container_width=True)
 
 # --------------------------------------------------------- 3 Attribution
 with tabs[3]:
@@ -925,7 +1032,9 @@ with tabs[3]:
         "contributions would not sum. This is deliberately the one "
         "premium-denominated page; the direction reading is unchanged "
         "(a negative move = gap narrowing = H catching up).")
-    st.dataframe(att.style.format(precision=2, na_rep="—"),
+    _att_disp = att.drop(columns=["Classification"]) \
+        if IS_PUBLIC and "Classification" in att.columns else att
+    st.dataframe(_att_disp.style.format(precision=2, na_rep="—"),
                  use_container_width=True, height=480)
     if not att.empty:
         counts = att["Driver"].value_counts()
@@ -1102,7 +1211,8 @@ def att_over(version: int, days: int) -> pd.DataFrame:
 
 with tabs[6]:
     st.subheader("Daily commentary")
-    st.markdown(commentary.daily_commentary(table, att))
+    st.markdown(commentary.daily_commentary(table, att,
+                                            public=IS_PUBLIC))
     st.divider()
     st.subheader("Closing summary")
     st.markdown(commentary.closing_summary(
@@ -1110,15 +1220,18 @@ with tabs[6]:
     st.divider()
     st.subheader("Weekly commentary")
     st.markdown(commentary.period_commentary(
-        table, "1w", att_over(st.session_state["data_version"], 7)))
+        table, "1w", att_over(st.session_state["data_version"], 7),
+        public=IS_PUBLIC))
     st.divider()
     st.subheader("Monthly commentary")
     st.markdown(commentary.period_commentary(
-        table, "1m", att_over(st.session_state["data_version"], 30)))
+        table, "1m", att_over(st.session_state["data_version"], 30),
+        public=IS_PUBLIC))
     st.divider()
     st.subheader("Yearly commentary")
     st.markdown(commentary.period_commentary(
-        table, "1y", att_over(st.session_state["data_version"], 365)))
+        table, "1y", att_over(st.session_state["data_version"], 365),
+        public=IS_PUBLIC))
     st.caption("Every 'cause' sentence is counted from the Attribution "
                "tab's arithmetic decomposition over the matching window "
                "— daily causes from the 1-day decomposition, weekly and "
@@ -1127,15 +1240,20 @@ with tabs[6]:
     st.caption("The scheduler (`python -m ahmon.scheduler`) stores these "
                "automatically: daily + closing after the HK close, weekly "
                "on Friday, monthly on the month's last trading day.")
-    with st.expander("Stored commentary history (written by the scheduler)"):
-        hist = db.commentary_df(conn)
-        if hist.empty:
-            st.info("Nothing stored yet — start the scheduler to record "
-                    "commentary after each HK close.")
-        else:
-            for _, r in hist.iterrows():
-                st.markdown(f"**{r['ts']} · {r['kind']}**\n\n{r['body']}")
-                st.divider()
+    if not IS_PUBLIC:
+        # stored bodies include the Focus-holdings paragraphs, so the
+        # archive stays on the private site only
+        with st.expander("Stored commentary history "
+                         "(written by the scheduler)"):
+            hist = db.commentary_df(conn)
+            if hist.empty:
+                st.info("Nothing stored yet — start the scheduler to "
+                        "record commentary after each HK close.")
+            else:
+                for _, r in hist.iterrows():
+                    st.markdown(f"**{r['ts']} · {r['kind']}**\n\n"
+                                f"{r['body']}")
+                    st.divider()
 
 # --------------------------------------------------------------- 9 Health
 with tabs[8]:
@@ -1176,14 +1294,16 @@ with tabs[8]:
             st.success(f"{res['done']} backfilled, "
                        f"{res['skipped_companies']} already done, "
                        f"{res['failed']} failed.")
-    st.divider()
-    st.markdown("##### Freshness by classification tier")
-    fresh = table.groupby("Classification").agg(
-        companies=("Company", "count"),
-        stale=("Quality", lambda q: int((q == "stale").sum())),
-        sample=("Quality", lambda q: int((q == "sample").sum())))
-    st.dataframe(fresh, use_container_width=True)
-    st.caption("Refresh cadence (Phase 4 scheduler): Focus 5 min during "
-               "overlapping HK/mainland hours, 10 min 15:00–16:00 HK; "
-               "Portfolio/Watchlist 15 min; Other 30 min; EOD snapshot "
-               "after HK close. Sample data is never relabelled as live.")
+    if not IS_PUBLIC:
+        st.divider()
+        st.markdown("##### Freshness by classification tier")
+        fresh = table.groupby("Classification").agg(
+            companies=("Company", "count"),
+            stale=("Quality", lambda q: int((q == "stale").sum())),
+            sample=("Quality", lambda q: int((q == "sample").sum())))
+        st.dataframe(fresh, use_container_width=True)
+        st.caption("Refresh cadence (Phase 4 scheduler): Focus 5 min "
+                   "during overlapping HK/mainland hours, 10 min "
+                   "15:00–16:00 HK; Portfolio/Watchlist 15 min; Other "
+                   "30 min; EOD snapshot after HK close. Sample data is "
+                   "never relabelled as live.")

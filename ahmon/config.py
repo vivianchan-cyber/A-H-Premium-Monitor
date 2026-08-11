@@ -21,6 +21,14 @@ DB_PATH = Path(os.environ.get("AHMON_DB", SAMPLE_DB_PATH))
 # URL — it carries credentials and must live in environment variables.
 DATABASE_URL = os.environ.get("DATABASE_URL") or None
 
+# Public read-only mode (AHMON_PUBLIC=1): no login, viewer-level access,
+# and the dashboard hides everything portfolio-related — the Focus/Other
+# split, the classification audit trail and the owner's watchlist. Set
+# this ONLY on the dedicated public Railway service, never on the
+# private one: it disables authentication entirely for that service.
+PUBLIC_MODE = os.environ.get("AHMON_PUBLIC", "").strip().lower() \
+    in ("1", "true", "yes")
+
 TZ = ZoneInfo("Asia/Singapore")
 
 # Classification labels (stored verbatim in the DB — do not rename casually).
